@@ -174,8 +174,7 @@ const handler = async (req: Request): Promise<Response> => {
                 <ul style="margin: 10px 0; padding-left: 20px;">
                   <li>Apresente um documento com foto na entrada</li>
                   <li>Válido apenas para o mês do aniversário</li>
-                  <li>Não válido em feriados especiais</li>
-                  <li>Sujeito à disponibilidade de vagas</li>
+                  <li>Proibido entrada de bebida, comida e som</li>
                 </ul>
               </div>
               
