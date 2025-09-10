@@ -20,6 +20,7 @@ import SpaManager from '@/components/admin/SpaManager';
 import AreaVipManager from '@/components/admin/AreaVipManager';
 import MainGalleryManager from '@/components/admin/MainGalleryManager';
 import BarRestauranteManager from '@/components/admin/BarRestauranteManager';
+import StoreConfigManager from '@/components/admin/StoreConfigManager';
 import { VisitorAnalytics } from '@/components/admin/VisitorAnalytics';
 
 const Admin = () => {
@@ -210,11 +211,16 @@ const Admin = () => {
                 <CardDescription>Gerencie categorias e produtos da loja</CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="categories" className="space-y-4">
+                <Tabs defaultValue="config" className="space-y-4">
                   <TabsList>
+                    <TabsTrigger value="config">Configurações</TabsTrigger>
                     <TabsTrigger value="categories">Categorias</TabsTrigger>
                     <TabsTrigger value="products">Produtos</TabsTrigger>
                   </TabsList>
+                  
+                  <TabsContent value="config">
+                    <StoreConfigManager />
+                  </TabsContent>
                   
                   <TabsContent value="categories">
                     <CategoriesManager />

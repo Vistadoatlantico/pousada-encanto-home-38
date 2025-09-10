@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ShoppingCart, X } from "lucide-react";
+import { ShoppingCart, X, Store, AlertTriangle } from "lucide-react";
 
 interface Product {
   id: string;
@@ -24,12 +25,18 @@ interface Category {
 }
 
 const LojaVirtual = () => {
+  const { isAdmin } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [storeConfig, setStoreConfig] = useState({
+    is_active: true,
+    admin_message: '',
+    user_message: ''
+  });
 
   useEffect(() => {
     fetchData();
@@ -38,6 +45,17 @@ const LojaVirtual = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
+      
+      // Buscar configuração da loja
+      const { data: storeConfigData } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('section_name', 'store_config')
+        .maybeSingle();
+      
+      if (storeConfigData?.content) {
+        setStoreConfig(storeConfigData.content as any);
+      }
       
       // Buscar imagem de fundo
       const { data: contentData } = await supabase
@@ -87,10 +105,60 @@ const LojaVirtual = () => {
     window.open(url, '_blank');
   };
 
+  // Se a loja está desativada e o usuário não é admin, mostrar mensagem
+  if (!storeConfig.is_active && !isAdmin) {
+    return (
+      <div className="min-h-screen">
+        <Header />
+        <main className="pt-20">
+          <section className="py-16 px-4">
+            <div className="container mx-auto max-w-4xl text-center">
+              <Card>
+                <CardContent className="p-12">
+                  <Store className="w-16 h-16 mx-auto mb-6 text-muted-foreground" />
+                  <h1 className="text-3xl font-bold mb-4">Loja Virtual Temporariamente Indisponível</h1>
+                  <p className="text-lg text-muted-foreground mb-6">
+                    {storeConfig.user_message || 'Nossa loja virtual está temporariamente indisponível. Em breve estará disponível novamente!'}
+                  </p>
+                  <Button 
+                    onClick={() => window.history.back()}
+                    variant="outline"
+                  >
+                    Voltar
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <Header />
       <main className="pt-20">
+        {/* Mensagem para admin quando loja está desativada */}
+        {!storeConfig.is_active && isAdmin && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+            <div className="container mx-auto max-w-6xl">
+              <div className="flex items-center">
+                <AlertTriangle className="w-5 h-5 text-yellow-400 mr-3" />
+                <div>
+                  <p className="text-yellow-800 font-medium">
+                    Modo Admin: A loja virtual está desativada para usuários
+                  </p>
+                  <p className="text-yellow-700 text-sm">
+                    {storeConfig.admin_message || 'Apenas administradores podem visualizar e gerenciar a loja no momento.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Hero Section */}
         <section 
           className="relative h-96 bg-cover bg-center bg-gray-300 flex items-center justify-center"
