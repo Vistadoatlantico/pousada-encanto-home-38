@@ -416,7 +416,9 @@ const BirthdayModal = ({ isOpen, onClose }: BirthdayModalProps) => {
                           // Use config for available month/year
                           const availableMonth = (config?.available_month ?? 9) - 1; // Convert to 0-indexed
                           const availableYear = config?.available_year ?? 2025;
-                          return date.getMonth() !== availableMonth || date.getFullYear() !== availableYear || date < new Date();
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0); // Reset time to start of day
+                          return date.getMonth() !== availableMonth || date.getFullYear() !== availableYear || date < today;
                         }}
                         initialFocus
                         className="pointer-events-auto"
