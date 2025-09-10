@@ -30,7 +30,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("Sending confirmation email to:", email);
 
     const emailResponse = await resend.emails.send({
-      from: "Paradise Vista do Atlântico <noreply@resend.dev>",
+      from: "Paradise Vista do Atlântico <noreply@pousadavistadoatlantico.com.br>",
       to: [email],
       subject: "🎉 Confirmação da Reserva - Promoção Aniversariante do Mês",
       html: `
