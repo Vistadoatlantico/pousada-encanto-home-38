@@ -1,0 +1,7 @@
+project_id = "pjzdvmqxavqmtmxaupxo"
+
+[functions.track-visitor]
+verify_jwt = false
+
+[functions.send-birthday-confirmation]
+verify_jwt = false
