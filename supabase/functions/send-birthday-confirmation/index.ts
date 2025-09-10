@@ -179,8 +179,6 @@ const handler = async (req: Request): Promise<Response> => {
                 </ul>
               </div>
               
-              <p><strong>Próximos Passos:</strong></p>
-              <p>Nossa equipe entrará em contato pelo WhatsApp informado para confirmar a disponibilidade e finalizar sua reserva.</p>
               
               <div style="text-align: center;">
                 <a href="https://wa.me/5582982235336" class="button">Falar no WhatsApp</a>
