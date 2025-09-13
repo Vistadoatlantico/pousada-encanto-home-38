@@ -1,170 +1,116 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Gift, Settings, Plus, Trash2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
+import { Gift, AlertTriangle, List, Save, Calendar, Users } from "lucide-react";
+
+interface BirthdayConfig {
+  id: number;
+  is_active: boolean;
+  title: string;
+  subtitle: string;
+  benefits: string[];
+  important_info: string[];
+  available_month: number;
+  available_year: number;
+  max_companions: number; // Adicionado
+}
 
 const BirthdayModalManager = () => {
-  const { toast } = useToast();
-  const [config, setConfig] = useState<any>(null);
+  const [config, setConfig] = useState<Partial<BirthdayConfig>>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [benefits, setBenefits] = useState<string[]>([]);
-  const [importantInfo, setImportantInfo] = useState<string[]>([]);
+  const { toast } = useToast();
+
+  const fetchConfig = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("birthday_modal_config")
+      .select("*")
+      .eq("is_active", true)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
+      toast({
+        title: "Erro ao carregar configuração",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else if (data) {
+      setConfig(data);
+    } else {
+      toast({
+        title: "Nenhuma configuração ativa encontrada",
+        description: "Parece que não há uma configuração de modal de aniversário ativa no banco de dados.",
+        variant: "destructive"
+      });
+    }
+    setLoading(false);
+  }, [toast]);
 
   useEffect(() => {
     fetchConfig();
-  }, []);
+  }, [fetchConfig]);
 
-  const fetchConfig = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('birthday_modal_config')
-        .select('*')
-        .eq('is_active', true)
-        .single();
+  const handleUpdate = async () => {
+    if (!config.id) {
+      toast({ title: "Erro", description: "ID da configuração não encontrado.", variant: "destructive" });
+      return;
+    }
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
+    setLoading(true);
 
-      if (data) {
-        setConfig(data);
-        setBenefits(Array.isArray(data.benefits) ? data.benefits as string[] : []);
-        setImportantInfo(Array.isArray(data.important_info) ? data.important_info as string[] : []);
-      } else {
-        // Criar configuração padrão se não existir
-        await createDefaultConfig();
-      }
-    } catch (error) {
-      console.error('Erro ao carregar configuração:', error);
+    const { error } = await supabase
+      .from("birthday_modal_config")
+      .update({
+        title: config.title,
+        subtitle: config.subtitle,
+        benefits: config.benefits,
+        important_info: config.important_info,
+        available_month: config.available_month,
+        available_year: config.available_year,
+        is_active: config.is_active,
+        max_companions: config.max_companions, // Adicionado
+      })
+      .eq("id", config.id);
+
+    setLoading(false);
+
+    if (error) {
       toast({
-        title: "Erro",
-        description: "Erro ao carregar configuração do modal de aniversariante",
-        variant: "destructive"
+        title: "Erro ao atualizar configuração",
+        description: error.message,
+        variant: "destructive",
       });
-    } finally {
-      setLoading(false);
+    } else {
+      toast({
+        title: "Configuração atualizada!",
+        description: "As informações do modal de aniversário foram salvas.",
+      });
+      fetchConfig();
     }
   };
 
-  const createDefaultConfig = async () => {
-    const defaultConfig = {
-      available_month: 9,
-      available_year: 2025,
-      title: 'Reserva Aniversariante do Mês',
-      subtitle: '🎂 Entrada GRATUITA para aniversariantes do mês! 🎁 Até 3 acompanhantes também entram grátis!',
-      benefits: [
-        'Aniversariante entrada GRÁTIS no Day use',
-        'Traga até 3 amigos também GRÁTIS',
-        'Das 10h às 16h para aproveitar o dia todo',
-        'Piscinas para day use, Área de lazer, Área kids e muito mais'
-      ],
-      important_info: [
-        'Válido apenas para o mês especificado',
-        'Agendamento obrigatório com antecedência',
-        'Documentos de identificação necessários',
-        'Não é válido em feriados especiais'
-      ],
-      is_active: true
-    };
+  const handleTextareaChange = (field: 'benefits' | 'important_info', value: string) => {
+    setConfig(prev => ({ ...prev, [field]: value.split('\n') }));
+  }
 
-    const { data, error } = await supabase
-      .from('birthday_modal_config')
-      .insert([defaultConfig])
-      .select()
-      .single();
-
-    if (!error && data) {
-      setConfig(data);
-      setBenefits(Array.isArray(data.benefits) ? data.benefits as string[] : []);
-      setImportantInfo(Array.isArray(data.important_info) ? data.important_info as string[] : []);
-    }
-  };
-
-  const handleConfigChange = (field: string, value: any) => {
-    setConfig(prev => ({ ...prev, [field]: value }));
-  };
-
-  const addBenefit = () => {
-    setBenefits([...benefits, '']);
-  };
-
-  const removeBenefit = (index: number) => {
-    setBenefits(benefits.filter((_, i) => i !== index));
-  };
-
-  const updateBenefit = (index: number, value: string) => {
-    const newBenefits = [...benefits];
-    newBenefits[index] = value;
-    setBenefits(newBenefits);
-  };
-
-  const addImportantInfo = () => {
-    setImportantInfo([...importantInfo, '']);
-  };
-
-  const removeImportantInfo = (index: number) => {
-    setImportantInfo(importantInfo.filter((_, i) => i !== index));
-  };
-
-  const updateImportantInfo = (index: number, value: string) => {
-    const newInfo = [...importantInfo];
-    newInfo[index] = value;
-    setImportantInfo(newInfo);
-  };
-
-  const saveConfig = async () => {
-    setSaving(true);
-    try {
-      const updatedConfig = {
-        ...config,
-        benefits: benefits.filter(b => b.trim()),
-        important_info: importantInfo.filter(i => i.trim())
-      };
-
-      const { error } = await supabase
-        .from('birthday_modal_config')
-        .update(updatedConfig)
-        .eq('id', config.id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Sucesso",
-        description: "Configuração do modal atualizada com sucesso!"
-      });
-    } catch (error) {
-      console.error('Erro ao salvar:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao salvar configuração",
-        variant: "destructive"
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) {
+  if (loading && Object.keys(config).length === 0) {
     return (
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Gift className="w-5 h-5" />
-            <CardTitle>Configurar Modal de Aniversariante</CardTitle>
-          </div>
+          <CardTitle className="flex items-center gap-2">
+            <Gift className="w-6 h-6 text-paradise-blue" />
+            Gerenciar Modal de Aniversariante
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex justify-center py-8">
-            Carregando configuração...
-          </div>
+          <p>Carregando configuração...</p>
         </CardContent>
       </Card>
     );
@@ -173,166 +119,114 @@ const BirthdayModalManager = () => {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <Gift className="w-5 h-5" />
-          <CardTitle>Configurar Modal de Aniversariante</CardTitle>
-        </div>
+        <CardTitle className="flex items-center gap-2">
+          <Gift className="w-6 h-6 text-paradise-blue" />
+          Gerenciar Modal de Aniversariante
+        </CardTitle>
         <CardDescription>
-          Configure os textos, data disponível e benefícios do modal de reserva de aniversariante
+          Edite os textos, benefícios e regras que aparecem no pop-up de reserva para aniversariantes no site.
         </CardDescription>
       </CardHeader>
-      
-      <CardContent className="space-y-6">
-        {/* Configurações Gerais */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 font-semibold">
-            <Settings className="w-4 h-4" />
-            Configurações Gerais
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="title">Título do Modal</Label>
-              <Input
-                id="title"
-                value={config?.title || ''}
-                onChange={(e) => handleConfigChange('title', e.target.value)}
-                placeholder="Título do modal"
-              />
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="is_active"
-                checked={config?.is_active || false}
-                onCheckedChange={(checked) => handleConfigChange('is_active', checked)}
-              />
-              <Label htmlFor="is_active">Modal Ativo</Label>
-            </div>
-          </div>
+      <CardContent className="space-y-8 pt-6">
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="is-active"
+            checked={config.is_active || false}
+            onCheckedChange={(checked) => setConfig(prev => ({ ...prev, is_active: checked }))}
+          />
+          <Label htmlFor="is-active">Ativar o modal de aniversário no site</Label>
+        </div>
 
-          <div>
-            <Label htmlFor="subtitle">Subtítulo/Descrição</Label>
-            <Textarea
-              id="subtitle"
-              value={config?.subtitle || ''}
-              onChange={(e) => handleConfigChange('subtitle', e.target.value)}
-              placeholder="Descrição que aparece no topo do modal"
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="title">Título Principal</Label>
+            <Input
+              id="title"
+              value={config.title || ""}
+              onChange={(e) => setConfig(prev => ({ ...prev, title: e.target.value }))}
+              placeholder="Ex: Reserva Aniversariante do Mês"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="available_month">Mês Disponível</Label>
-              <Select
-                value={config?.available_month?.toString() || '9'}
-                onValueChange={(value) => handleConfigChange('available_month', parseInt(value))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Janeiro</SelectItem>
-                  <SelectItem value="2">Fevereiro</SelectItem>
-                  <SelectItem value="3">Março</SelectItem>
-                  <SelectItem value="4">Abril</SelectItem>
-                  <SelectItem value="5">Maio</SelectItem>
-                  <SelectItem value="6">Junho</SelectItem>
-                  <SelectItem value="7">Julho</SelectItem>
-                  <SelectItem value="8">Agosto</SelectItem>
-                  <SelectItem value="9">Setembro</SelectItem>
-                  <SelectItem value="10">Outubro</SelectItem>
-                  <SelectItem value="11">Novembro</SelectItem>
-                  <SelectItem value="12">Dezembro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="available_year">Ano Disponível</Label>
-              <Input
-                id="available_year"
-                type="number"
-                value={config?.available_year || 2025}
-                onChange={(e) => handleConfigChange('available_year', parseInt(e.target.value))}
-                min="2024"
-                max="2030"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Benefícios */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold">
-              <Gift className="w-4 h-4" />
-              Benefícios GRATUITOS
-            </div>
-            <Button size="sm" variant="outline" onClick={addBenefit}>
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar
-            </Button>
-          </div>
-          
           <div className="space-y-2">
-            {benefits.map((benefit, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  value={benefit}
-                  onChange={(e) => updateBenefit(index, e.target.value)}
-                  placeholder="Descrição do benefício"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => removeBenefit(index)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
+            <Label htmlFor="subtitle">Subtítulo (Chamada)</Label>
+            <Input
+              id="subtitle"
+              value={config.subtitle || ""}
+              onChange={(e) => setConfig(prev => ({ ...prev, subtitle: e.target.value }))}
+              placeholder="Ex: 🎂 Entrada GRATUITA para aniversariantes do mês!"
+            />
           </div>
         </div>
-
-        {/* Informações Importantes */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold">
-              <Settings className="w-4 h-4" />
-              Informações Importantes
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+            <div className="space-y-2">
+                 <Label className="flex items-center gap-2 font-semibold"><Calendar/> Período da Promoção</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                    <Label htmlFor="available_month">Mês de Validade (1-12)</Label>
+                    <Input
+                        id="available_month"
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={config.available_month || ""}
+                        onChange={(e) => setConfig(prev => ({ ...prev, available_month: parseInt(e.target.value) || undefined }))}
+                    />
+                    </div>
+                    <div className="space-y-2">
+                    <Label htmlFor="available_year">Ano de Validade</Label>
+                    <Input
+                        id="available_year"
+                        type="number"
+                        value={config.available_year || ""}
+                        onChange={(e) => setConfig(prev => ({ ...prev, available_year: parseInt(e.target.value) || undefined }))}
+                    />
+                    </div>
+                </div>
             </div>
-            <Button size="sm" variant="outline" onClick={addImportantInfo}>
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar
-            </Button>
-          </div>
-          
-          <div className="space-y-2">
-            {importantInfo.map((info, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  value={info}
-                  onChange={(e) => updateImportantInfo(index, e.target.value)}
-                  placeholder="Informação importante"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => removeImportantInfo(index)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
+
+            <div className="space-y-2">
+                <Label className="flex items-center gap-2 font-semibold"><Users/> Acompanhantes</Label>
+                 <div className="space-y-2">
+                    <Label htmlFor="max_companions">Número Máximo de Acompanhantes</Label>
+                    <Input
+                        id="max_companions"
+                        type="number"
+                        min="0"
+                        value={config.max_companions ?? 3}
+                        onChange={(e) => setConfig(prev => ({ ...prev, max_companions: parseInt(e.target.value) || 0 }))}
+                    />
+                </div>
+            </div>
         </div>
 
-        <div className="flex justify-end pt-4">
-          <Button onClick={saveConfig} disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar Configuração'}
-          </Button>
+        <div className="space-y-2">
+          <Label htmlFor="benefits" className="flex items-center gap-2 font-semibold"><List />Benefícios (um por linha)</Label>
+          <Textarea
+            id="benefits"
+            rows={5}
+            value={(config.benefits || []).join('\n')}
+            onChange={(e) => handleTextareaChange('benefits', e.target.value)}
+            placeholder="Aniversariante entrada GRÁTIS no Day use"
+          />
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="important_info" className="flex items-center gap-2 font-semibold"><AlertTriangle/>Informações Importantes (uma por linha)</Label>
+          <Textarea
+            id="important_info"
+            rows={5}
+            value={(config.important_info || []).join('\n')}
+            onChange={(e) => handleTextareaChange('important_info', e.target.value)}
+            placeholder="Válido apenas para o mês especificado"
+          />
+        </div>
+
+        <Button onClick={handleUpdate} disabled={loading}>
+          <Save className="w-4 h-4 mr-2" />
+          {loading ? "Salvando..." : "Salvar Alterações"}
+        </Button>
       </CardContent>
     </Card>
   );

@@ -1,3 +1,4 @@
+
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,6 +11,7 @@ import ServicesPageManager from '@/components/admin/ServicesPageManager';
 import DayUseManager from '@/components/admin/DayUseManager';
 import CarouselManager from '@/components/admin/CarouselManager';
 import BirthdayReservationsManager from '@/components/admin/BirthdayReservationsManager';
+import BirthdayModalManager from '@/components/admin/BirthdayModalManager'; // Importado
 import LocationManager from '@/components/admin/LocationManager';
 import CategoriesManager from '@/components/admin/CategoriesManager';
 import ProductsManager from '@/components/admin/ProductsManager';
@@ -77,14 +79,30 @@ const Admin = () => {
             </TabsList>
           </div>
 
+          {/* Aba de Aniversariantes atualizada com sub-abas */}
           <TabsContent value="birthday" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Reservas de Aniversariantes</CardTitle>
-                <CardDescription>Gerencie as reservas especiais para aniversariantes</CardDescription>
+                <CardTitle>Promoção de Aniversariantes</CardTitle>
+                <CardDescription>
+                  Gerencie as reservas recebidas e configure o modal da promoção de aniversário.
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <BirthdayReservationsManager />
+                <Tabs defaultValue="reservations" className="space-y-4">
+                  <div className="overflow-x-auto pb-2">
+                    <TabsList>
+                      <TabsTrigger value="reservations">Reservas</TabsTrigger>
+                      <TabsTrigger value="modal-config">Configuração do Modal</TabsTrigger>
+                    </TabsList>
+                  </div>
+                  <TabsContent value="reservations">
+                    <BirthdayReservationsManager />
+                  </TabsContent>
+                  <TabsContent value="modal-config">
+                    <BirthdayModalManager />
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </TabsContent>
