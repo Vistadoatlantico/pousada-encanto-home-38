@@ -65,15 +65,17 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="birthday" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="birthday">Aniversariantes</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            <TabsTrigger value="content">Conteúdo</TabsTrigger>
-            <TabsTrigger value="services">Serviços</TabsTrigger>
-            <TabsTrigger value="accommodation">Hospedagem</TabsTrigger>
-            <TabsTrigger value="store">Loja Virtual</TabsTrigger>
-            <TabsTrigger value="settings">Configurações</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-2">
+            <TabsList>
+              <TabsTrigger value="birthday">Aniversariantes</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="content">Conteúdo</TabsTrigger>
+              <TabsTrigger value="services">Serviços</TabsTrigger>
+              <TabsTrigger value="accommodation">Hospedagem</TabsTrigger>
+              <TabsTrigger value="store">Loja Virtual</TabsTrigger>
+              <TabsTrigger value="settings">Configurações</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="birthday" className="space-y-4">
             <Card>
@@ -107,12 +109,14 @@ const Admin = () => {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="pages" className="space-y-4">
-                  <TabsList>
-                    <TabsTrigger value="pages">Editor de Páginas</TabsTrigger>
-                    <TabsTrigger value="gallery">Galeria</TabsTrigger>
-                    <TabsTrigger value="carousel">Carrossel</TabsTrigger>
-                    <TabsTrigger value="backgrounds">Imagens de Fundo</TabsTrigger>
-                  </TabsList>
+                  <div className="overflow-x-auto pb-2">
+                    <TabsList>
+                      <TabsTrigger value="pages">Editor de Páginas</TabsTrigger>
+                      <TabsTrigger value="gallery">Galeria</TabsTrigger>
+                      <TabsTrigger value="carousel">Carrossel</TabsTrigger>
+                      <TabsTrigger value="backgrounds">Imagens de Fundo</TabsTrigger>
+                    </TabsList>
+                  </div>
                   
                   <TabsContent value="pages">
                     <PagesEditor />
@@ -142,14 +146,16 @@ const Admin = () => {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="services-list" className="space-y-4">
-                  <TabsList>
-                    <TabsTrigger value="services-list">Lista de Serviços</TabsTrigger>
-                    <TabsTrigger value="services-page">Página de Serviços</TabsTrigger>
-                    <TabsTrigger value="spa">SPA</TabsTrigger>
-                    <TabsTrigger value="area-vip">Área VIP</TabsTrigger>
-                    <TabsTrigger value="bar-restaurante">Bar & Restaurante</TabsTrigger>
-                    <TabsTrigger value="dayuse">Day Use</TabsTrigger>
-                  </TabsList>
+                  <div className="overflow-x-auto pb-2">
+                    <TabsList>
+                      <TabsTrigger value="services-list">Lista de Serviços</TabsTrigger>
+                      <TabsTrigger value="services-page">Página de Serviços</TabsTrigger>
+                      <TabsTrigger value="spa">SPA</TabsTrigger>
+                      <TabsTrigger value="area-vip">Área VIP</TabsTrigger>
+                      <TabsTrigger value="bar-restaurante">Bar & Restaurante</TabsTrigger>
+                      <TabsTrigger value="dayuse">Day Use</TabsTrigger>
+                    </TabsList>
+                  </div>
                   
                   <TabsContent value="services-list">
                     <ServicesManager />
@@ -187,10 +193,12 @@ const Admin = () => {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="rooms" className="space-y-4">
-                  <TabsList>
-                    <TabsTrigger value="rooms">Quartos</TabsTrigger>
-                    <TabsTrigger value="hospedagem-content">Conteúdo da Página</TabsTrigger>
-                  </TabsList>
+                  <div className="overflow-x-auto pb-2">
+                    <TabsList>
+                      <TabsTrigger value="rooms">Quartos</TabsTrigger>
+                      <TabsTrigger value="hospedagem-content">Conteúdo da Página</TabsTrigger>
+                    </TabsList>
+                  </div>
                   
                   <TabsContent value="rooms">
                     <RoomsManager />
@@ -212,11 +220,13 @@ const Admin = () => {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="config" className="space-y-4">
-                  <TabsList>
-                    <TabsTrigger value="config">Configurações</TabsTrigger>
-                    <TabsTrigger value="categories">Categorias</TabsTrigger>
-                    <TabsTrigger value="products">Produtos</TabsTrigger>
-                  </TabsList>
+                  <div className="overflow-x-auto pb-2">
+                    <TabsList>
+                      <TabsTrigger value="config">Configurações</TabsTrigger>
+                      <TabsTrigger value="categories">Categorias</TabsTrigger>
+                      <TabsTrigger value="products">Produtos</TabsTrigger>
+                    </TabsList>
+                  </div>
                   
                   <TabsContent value="config">
                     <StoreConfigManager />
