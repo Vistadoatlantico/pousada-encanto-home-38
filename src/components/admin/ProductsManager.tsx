@@ -34,18 +34,29 @@ interface Category {
   is_active: boolean;
 }
 
+interface ProductFormData {
+  name: string;
+  description: string;
+  price: string;
+  image_url: string;
+  category_id: string;
+  display_order: number;
+  is_active: boolean;
+  stock_quantity: number;
+}
+
 const ProductsManager = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [formData, setFormData] = useState<ProductFormData>({
     name: '',
     description: '',
-    price: 0,
+    price: '',
     image_url: '',
     category_id: '',
     display_order: 0,
@@ -94,8 +105,11 @@ const ProductsManager = () => {
     setLoading(true);
 
     try {
+      const priceAsNumber = parseFloat(formData.price.replace(',', '.')) || 0;
+
       const productData = {
         ...formData,
+        price: priceAsNumber,
         category_id: formData.category_id || null
       };
 
@@ -132,14 +146,14 @@ const ProductsManager = () => {
     setFormData({
       name: product.name,
       description: product.description || '',
-      price: product.price,
+      price: String(product.price),
       image_url: product.image_url || '',
       category_id: product.category_id || '',
       display_order: product.display_order,
       is_active: product.is_active,
       stock_quantity: product.stock_quantity
     });
-    setImagePreview(product.image_url || null);
+    setMediaPreview(product.image_url || null);
     setIsDialogOpen(true);
   };
 
@@ -165,7 +179,7 @@ const ProductsManager = () => {
     setFormData({
       name: '',
       description: '',
-      price: 0,
+      price: '',
       image_url: '',
       category_id: '',
       display_order: 0,
@@ -173,26 +187,24 @@ const ProductsManager = () => {
       stock_quantity: 0
     });
     setEditingProduct(null);
-    setImagePreview(null);
+    setMediaPreview(null);
   };
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Por favor, selecione apenas arquivos de imagem');
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      toast.error('Por favor, selecione apenas arquivos de imagem ou vídeo');
       return;
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Imagem muito grande. Máximo 5MB permitido');
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo 50MB permitido');
       return;
     }
 
-    setUploadingImage(true);
+    setUploadingMedia(true);
 
     try {
       const fileExt = file.name.split('.').pop();
@@ -210,19 +222,24 @@ const ProductsManager = () => {
         .getPublicUrl(filePath);
 
       setFormData({ ...formData, image_url: publicUrl });
-      setImagePreview(publicUrl);
-      toast.success('Imagem enviada com sucesso!');
+      setMediaPreview(publicUrl);
+      toast.success('Mídia enviada com sucesso!');
     } catch (error) {
-      console.error('Erro ao fazer upload da imagem:', error);
-      toast.error('Erro ao enviar imagem');
+      console.error('Erro ao fazer upload da mídia:', error);
+      toast.error('Erro ao enviar mídia');
     } finally {
-      setUploadingImage(false);
+      setUploadingMedia(false);
     }
   };
 
-  const removeImage = () => {
+  const removeMedia = () => {
     setFormData({ ...formData, image_url: '' });
-    setImagePreview(null);
+    setMediaPreview(null);
+  };
+
+  const isVideo = (url: string | null): boolean => {
+    if (!url) return false;
+    return /\.(mp4|webm|ogg)$/i.test(url);
   };
 
   if (loading && products.length === 0) {
@@ -244,7 +261,7 @@ const ProductsManager = () => {
               Novo Produto
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md overflow-y-auto max-h-[90vh]">
             <DialogHeader>
               <DialogTitle>
                 {editingProduct ? 'Editar Produto' : 'Novo Produto'}
@@ -278,11 +295,11 @@ const ProductsManager = () => {
                 <Label htmlFor="price">Preço (R$) *</Label>
                 <Input
                   id="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="text"
+                  inputMode="decimal"
                   value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  placeholder="ex: 25,99"
                   required
                 />
               </div>
@@ -305,52 +322,57 @@ const ProductsManager = () => {
               </div>
               
               <div>
-                <Label htmlFor="image">Imagem do Produto</Label>
+                <Label htmlFor="media">Imagem ou Vídeo do Produto</Label>
                 <div className="space-y-4">
-                  {/* Upload da imagem */}
                   <div className="flex items-center gap-2">
                     <Input
-                      id="image"
+                      id="media"
                       type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      disabled={uploadingImage}
+                      accept="image/*,video/*"
+                      onChange={handleFileUpload}
+                      disabled={uploadingMedia}
                       className="flex-1"
                     />
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={uploadingImage}
+                      disabled={uploadingMedia}
                     >
                       <Upload className="w-4 h-4" />
                     </Button>
                   </div>
                   
-                  {/* Preview da imagem */}
-                  {imagePreview && (
-                    <div className="relative w-32 h-32 border rounded-md overflow-hidden">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                      />
+                  {mediaPreview && (
+                    <div className="relative w-full aspect-video border rounded-md overflow-hidden bg-slate-100">
+                      {isVideo(mediaPreview) ? (
+                        <video
+                          src={mediaPreview}
+                          controls
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={mediaPreview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
                       <Button
                         type="button"
                         variant="destructive"
                         size="sm"
                         className="absolute top-1 right-1 h-6 w-6 p-0"
-                        onClick={removeImage}
+                        onClick={removeMedia}
                       >
                         <X className="w-3 h-3" />
                       </Button>
                     </div>
                   )}
                   
-                  {/* Campo URL alternativo */}
                   <div>
                     <Label htmlFor="image_url" className="text-sm text-muted-foreground">
-                      Ou insira uma URL:
+                      Ou insira uma URL de imagem/vídeo:
                     </Label>
                     <Input
                       id="image_url"
@@ -358,9 +380,9 @@ const ProductsManager = () => {
                       value={formData.image_url}
                       onChange={(e) => {
                         setFormData({ ...formData, image_url: e.target.value });
-                        setImagePreview(e.target.value || null);
+                        setMediaPreview(e.target.value || null);
                       }}
-                      placeholder="https://exemplo.com/imagem.jpg"
+                      placeholder="https://exemplo.com/midia.jpg"
                     />
                   </div>
                 </div>
@@ -402,7 +424,7 @@ const ProductsManager = () => {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={loading}>
+                <Button type="submit" disabled={loading || uploadingMedia}>
                   {loading ? 'Salvando...' : 'Salvar'}
                 </Button>
               </div>
