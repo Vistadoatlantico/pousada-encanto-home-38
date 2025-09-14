@@ -107,6 +107,8 @@ const SpaManager = () => {
         .upsert({
           section_name: 'spa',
           content: content as any
+        }, {
+          onConflict: 'section_name'
         });
 
       if (error) throw error;

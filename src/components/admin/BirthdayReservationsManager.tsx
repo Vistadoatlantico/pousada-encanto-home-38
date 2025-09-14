@@ -12,6 +12,8 @@ import { Calendar, Gift, Users, Phone, Mail, FileText, Filter, Check, X, Clock, 
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import * as XLSX from 'xlsx';
+import { Label } from "@/components/ui/label";
 
 interface BirthdayReservation {
   id: string;
@@ -34,8 +36,7 @@ const BirthdayReservationsManager = () => {
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [visitDate, setVisitDate] = useState('');
   const [selectedReservation, setSelectedReservation] = useState<BirthdayReservation | null>(null);
   const [editingNotes, setEditingNotes] = useState('');
   const { toast } = useToast();
@@ -46,7 +47,7 @@ const BirthdayReservationsManager = () => {
 
   useEffect(() => {
     filterReservations();
-  }, [reservations, statusFilter, searchTerm, startDate, endDate]);
+  }, [reservations, statusFilter, searchTerm, visitDate]);
 
   const fetchReservations = async () => {
     setLoading(true);
@@ -82,12 +83,16 @@ const BirthdayReservationsManager = () => {
       );
     }
 
-    if (startDate) {
-      filtered = filtered.filter(res => new Date(res.visit_date) >= new Date(startDate));
-    }
-
-    if (endDate) {
-      filtered = filtered.filter(res => new Date(res.visit_date) <= new Date(endDate));
+    if (visitDate) {
+        const targetDate = new Date(visitDate);
+        filtered = filtered.filter(res => {
+            const reservationDate = new Date(res.visit_date);
+            return (
+                reservationDate.getUTCFullYear() === targetDate.getUTCFullYear() &&
+                reservationDate.getUTCMonth() === targetDate.getUTCMonth() &&
+                reservationDate.getUTCDate() === targetDate.getUTCDate()
+            );
+        });
     }
 
     setFilteredReservations(filtered);
@@ -181,7 +186,12 @@ const BirthdayReservationsManager = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "dd/MM/yyyy", { locale: ptBR });
+    if (!dateString) return '-';
+    try {
+        return format(new Date(dateString), "dd/MM/yyyy", { locale: ptBR });
+    } catch (error) {
+        return 'Data inválida';
+    }
   };
 
   const getStats = () => {
@@ -191,6 +201,48 @@ const BirthdayReservationsManager = () => {
     const completed = reservations.filter(r => r.status === 'completed').length;
     
     return { total, pending, approved, completed };
+  };
+
+  const exportToExcel = () => {
+    if (filteredReservations.length === 0) {
+        toast({
+            title: 'Nenhuma reserva para exportar',
+            description: 'A seleção atual não contém reservas para serem exportadas.',
+            variant: 'destructive'
+        });
+        return;
+    }
+
+    const dataToExport = filteredReservations.map(res => ({
+      'Aniversariante': res.full_name,
+      'CPF': res.cpf,
+      'Email': res.email,
+      'WhatsApp': res.whatsapp,
+      'Data de Nascimento': formatDate(res.birth_date),
+      'Data da Visita': formatDate(res.visit_date),
+      'Acompanhantes': res.companions,
+      'Nomes dos Acompanhantes': Array.isArray(res.companion_names) ? res.companion_names.join(', ') : '',
+      'Status': res.status,
+      'Data da Reserva': formatDate(res.created_at),
+      'Observações': res.notes || '-',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Reservas de Aniversário');
+
+    worksheet['!cols'] = [
+      { wch: 25 }, { wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 20 }, 
+      { wch: 20 }, { wch: 15 }, { wch: 40 }, { wch: 15 }, { wch: 20 }, { wch: 40 },
+    ];
+
+    const dateSuffix = visitDate ? format(new Date(visitDate), 'yyyy-MM-dd') : 'geral';
+    XLSX.writeFile(workbook, `reservas_aniversariantes_${dateSuffix}.xlsx`);
+
+    toast({
+      title: 'Exportação Concluída',
+      description: `${dataToExport.length} reservas foram exportadas para o arquivo Excel.`,
+    });
   };
 
   const stats = getStats();
@@ -282,23 +334,19 @@ const BirthdayReservationsManager = () => {
                   <SelectItem value="completed">Concluídas</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
+              <div className="space-y-1">
+                <Label className="text-sm">Data da Visita</Label>
                 <Input
                   type="date"
-                  placeholder="Data início"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  value={visitDate}
+                  onChange={(e) => setVisitDate(e.target.value)}
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                <Input
-                  type="date"
-                  placeholder="Data fim"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                />
+              <div className="flex items-end">
+                <Button onClick={exportToExcel} className="w-full" variant="outline">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Exportar para Excel
+                </Button>
               </div>
             </div>
           </div>
@@ -322,8 +370,8 @@ const BirthdayReservationsManager = () => {
                     <TableHead>Contato</TableHead>
                     <TableHead>Data Nasc.</TableHead>
                     <TableHead>Data Visita</TableHead>
-          <TableHead>Acompanhantes</TableHead>
-          <TableHead>Nomes</TableHead>
+                    <TableHead>Acompanhantes</TableHead>
+                    <TableHead>Nomes</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Data Reserva</TableHead>
                     <TableHead>Ações</TableHead>
@@ -432,7 +480,7 @@ const BirthdayReservationsManager = () => {
                   ))}
                   {filteredReservations.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         Nenhuma reserva encontrada
                       </TableCell>
                     </TableRow>
@@ -446,7 +494,7 @@ const BirthdayReservationsManager = () => {
 
       {/* Modal de Detalhes */}
       {selectedReservation && (
-        <Card className="fixed inset-4 z-50 overflow-auto bg-background">
+        <Card className="fixed inset-0 z-50 overflow-auto bg-background p-4 sm:p-6">
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
               <span>Detalhes da Reserva</span>

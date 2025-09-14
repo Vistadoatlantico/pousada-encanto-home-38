@@ -107,7 +107,6 @@ const handler = async (req: Request): Promise<Response> => {
             <div class="content">
               <h2>Olá, ${name}! 🎉</h2>
               <p>Sua solicitação de reserva para a <strong>Promoção Aniversariante do Mês</strong> foi recebida com sucesso!</p>
-              <p>Em breve, nossa equipe entrará em contato pelo WhatsApp para finalizar a confirmação. Por enquanto, anote os detalhes:</p>
               
               <div class="info-box">
                 <h3>📋 Detalhes da Solicitação</h3>

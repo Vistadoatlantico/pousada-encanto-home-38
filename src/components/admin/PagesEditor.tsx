@@ -184,11 +184,11 @@ const PagesEditor = () => {
                     </div>
                     
                     {/* Background Image Manager for Hero */}
-                    <ImageManager
+                    {/* <ImageManager
                       pageKey="hero-background"
                       currentImageUrl={contents[page.key]?.background_image_url}
                       onImageUpdate={(imageUrl) => updateContent(page.key, 'background_image_url', imageUrl)}
-                    />
+                    /> */}
                   </>
                 )}
 
