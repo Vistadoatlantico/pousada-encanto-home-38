@@ -1,4 +1,3 @@
-
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,7 +10,7 @@ import ServicesPageManager from '@/components/admin/ServicesPageManager';
 import DayUseManager from '@/components/admin/DayUseManager';
 import CarouselManager from '@/components/admin/CarouselManager';
 import BirthdayReservationsManager from '@/components/admin/BirthdayReservationsManager';
-import BirthdayModalManager from '@/components/admin/BirthdayModalManager'; // Importado
+import BirthdayModalManager from '@/components/admin/BirthdayModalManager';
 import LocationManager from '@/components/admin/LocationManager';
 import CategoriesManager from '@/components/admin/CategoriesManager';
 import ProductsManager from '@/components/admin/ProductsManager';
@@ -25,13 +24,30 @@ import BarRestauranteManager from '@/components/admin/BarRestauranteManager';
 import StoreConfigManager from '@/components/admin/StoreConfigManager';
 import { VisitorAnalytics } from '@/components/admin/VisitorAnalytics';
 
+const AdminHeader = ({ onSignOut }) => (
+  <header 
+    className="mb-8 p-6 rounded-lg shadow-lg" 
+  >
+    <div className="flex justify-between items-center">
+      <div>
+        <h1 className="text-3xl font-bold text-black">Painel Administrativo</h1>
+        <p className="text-black/90">Gerencie o conteúdo do site Paradise Vista do Atlântico.</p>
+      </div>
+      <div className="flex space-x-4">
+        <Button variant="outline" onClick={() => window.open('/', '_blank')}>Ver Site</Button>
+        <Button variant="destructive" onClick={onSignOut}>Sair</Button>
+      </div>
+    </div>
+  </header>
+);
+
 const Admin = () => {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
-      navigate('/auth');
+      navigate('/auth', { replace: true });
     }
   }, [user, isAdmin, loading, navigate]);
 
@@ -40,237 +56,155 @@ const Admin = () => {
     navigate('/');
   };
 
-  if (loading) {
+  if (loading || !user || !isAdmin) {
     return <div className="min-h-screen flex items-center justify-center">Carregando...</div>;
   }
 
-  if (!user || !isAdmin) {
-    return null;
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-paradise-blue/20 via-paradise-light-blue/10 to-white">
+    <div className="min-h-screen bg-muted/40">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-paradise-blue">Painel Administrativo</h1>
-            <p className="text-muted-foreground">Gerencie o conteúdo do site Paradise Vista do Atlântico</p>
-          </div>
-          <div className="flex space-x-4">
-            <Button variant="outline" onClick={() => navigate('/')}>
-              Ver Site
-            </Button>
-            <Button variant="destructive" onClick={handleSignOut}>
-              Sair
-            </Button>
-          </div>
-        </div>
+        <AdminHeader onSignOut={handleSignOut} />
 
         <Tabs defaultValue="birthday" className="space-y-6">
           <div className="overflow-x-auto pb-2">
-            <TabsList>
-              <TabsTrigger value="birthday">Aniversariantes</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-4 md:grid-cols-7">
+              <TabsTrigger value="birthday">Aniversários</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="content">Conteúdo</TabsTrigger>
               <TabsTrigger value="services">Serviços</TabsTrigger>
               <TabsTrigger value="accommodation">Hospedagem</TabsTrigger>
-              <TabsTrigger value="store">Loja Virtual</TabsTrigger>
+              <TabsTrigger value="store">Loja</TabsTrigger>
               <TabsTrigger value="settings">Configurações</TabsTrigger>
             </TabsList>
           </div>
 
-          {/* Aba de Aniversariantes atualizada com sub-abas */}
-          <TabsContent value="birthday" className="space-y-4">
+          {/* Sub-tabs for each main tab are now inside their respective cards for better organization */}
+          <TabsContent value="birthday">
             <Card>
               <CardHeader>
                 <CardTitle>Promoção de Aniversariantes</CardTitle>
-                <CardDescription>
-                  Gerencie as reservas recebidas e configure o modal da promoção de aniversário.
-                </CardDescription>
+                <CardDescription>Gerencie as reservas e o modal da promoção.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="reservations" className="space-y-4">
-                  <div className="overflow-x-auto pb-2">
-                    <TabsList>
-                      <TabsTrigger value="reservations">Reservas</TabsTrigger>
-                      <TabsTrigger value="modal-config">Configuração do Modal</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  <TabsContent value="reservations">
-                    <BirthdayReservationsManager />
-                  </TabsContent>
-                  <TabsContent value="modal-config">
-                    <BirthdayModalManager />
-                  </TabsContent>
+                <Tabs defaultValue="reservations">
+                  <TabsList>
+                    <TabsTrigger value="reservations">Reservas</TabsTrigger>
+                    <TabsTrigger value="modal-config">Config. Modal</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="reservations" className="pt-4"><BirthdayReservationsManager /></TabsContent>
+                  <TabsContent value="modal-config" className="pt-4"><BirthdayModalManager /></TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="analytics" className="space-y-4">
+          <TabsContent value="analytics">
             <Card>
               <CardHeader>
-                <CardTitle>Analytics de Visitantes</CardTitle>
-                <CardDescription>Veja estatísticas de visitantes por estado baseado no IP</CardDescription>
+                <CardTitle>Analytics</CardTitle>
+                <CardDescription>Estatísticas de visitantes por estado.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <VisitorAnalytics />
-              </CardContent>
+              <CardContent><VisitorAnalytics /></CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="content" className="space-y-4">
+          <TabsContent value="content">
             <Card>
               <CardHeader>
                 <CardTitle>Gestão de Conteúdo</CardTitle>
-                <CardDescription>Gerencie páginas, carrossel e imagens de fundo</CardDescription>
+                <CardDescription>Gerencie páginas, carrossel e mídias.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="pages" className="space-y-4">
-                  <div className="overflow-x-auto pb-2">
-                    <TabsList>
-                      <TabsTrigger value="pages">Editor de Páginas</TabsTrigger>
-                      <TabsTrigger value="gallery">Galeria</TabsTrigger>
-                      <TabsTrigger value="carousel">Carrossel</TabsTrigger>
-                      <TabsTrigger value="backgrounds">Imagens de Fundo</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  
-                  <TabsContent value="pages">
-                    <PagesEditor />
-                  </TabsContent>
-                  
-                  <TabsContent value="gallery">
-                    <MainGalleryManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="carousel">
-                    <CarouselManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="backgrounds">
-                    <PageBackgroundManager />
-                  </TabsContent>
+                <Tabs defaultValue="pages">
+                   <TabsList className="grid grid-cols-2 sm:grid-cols-4">
+                    <TabsTrigger value="pages">Páginas</TabsTrigger>
+                    <TabsTrigger value="gallery">Galeria</TabsTrigger>
+                    <TabsTrigger value="carousel">Carrossel</TabsTrigger>
+                    <TabsTrigger value="backgrounds">Fundos</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="pages" className="pt-4"><PagesEditor /></TabsContent>
+                  <TabsContent value="gallery" className="pt-4"><MainGalleryManager /></TabsContent>
+                  <TabsContent value="carousel" className="pt-4"><CarouselManager /></TabsContent>
+                  <TabsContent value="backgrounds" className="pt-4"><PageBackgroundManager /></TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="services" className="space-y-4">
+           <TabsContent value="services">
             <Card>
               <CardHeader>
-                <CardTitle>Serviços</CardTitle>
-                <CardDescription>Gerencie serviços, Day Use e reservas especiais</CardDescription>
+                <CardTitle>Gestão de Serviços</CardTitle>
+                <CardDescription>Gerencie todos os serviços e áreas especiais.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="services-list" className="space-y-4">
-                  <div className="overflow-x-auto pb-2">
-                    <TabsList>
-                      <TabsTrigger value="services-list">Lista de Serviços</TabsTrigger>
-                      <TabsTrigger value="services-page">Página de Serviços</TabsTrigger>
-                      <TabsTrigger value="spa">SPA</TabsTrigger>
-                      <TabsTrigger value="area-vip">Área VIP</TabsTrigger>
-                      <TabsTrigger value="bar-restaurante">Bar & Restaurante</TabsTrigger>
-                      <TabsTrigger value="dayuse">Day Use</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  
-                  <TabsContent value="services-list">
-                    <ServicesManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="services-page">
-                    <ServicesPageManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="spa">
-                    <SpaManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="area-vip">
-                    <AreaVipManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="bar-restaurante">
-                    <BarRestauranteManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="dayuse">
-                    <DayUseManager />
-                  </TabsContent>
+                <Tabs defaultValue="services-list">
+                  <TabsList className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6">
+                    <TabsTrigger value="services-list">Serviços</TabsTrigger>
+                    <TabsTrigger value="services-page">Pág. Serviços</TabsTrigger>
+                    <TabsTrigger value="spa">SPA</TabsTrigger>
+                    <TabsTrigger value="area-vip">Área VIP</TabsTrigger>
+                    <TabsTrigger value="bar-restaurante">Bar/Restaurante</TabsTrigger>
+                    <TabsTrigger value="dayuse">Day Use</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="services-list" className="pt-4"><ServicesManager /></TabsContent>
+                  <TabsContent value="services-page" className="pt-4"><ServicesPageManager /></TabsContent>
+                  <TabsContent value="spa" className="pt-4"><SpaManager /></TabsContent>
+                  <TabsContent value="area-vip" className="pt-4"><AreaVipManager /></TabsContent>
+                  <TabsContent value="bar-restaurante" className="pt-4"><BarRestauranteManager /></TabsContent>
+                  <TabsContent value="dayuse" className="pt-4"><DayUseManager /></TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="accommodation" className="space-y-4">
+          <TabsContent value="accommodation">
             <Card>
               <CardHeader>
-                <CardTitle>Hospedagem</CardTitle>
-                <CardDescription>Gerencie quartos e conteúdo de hospedagem</CardDescription>
+                <CardTitle>Gestão de Hospedagem</CardTitle>
+                <CardDescription>Gerencie os quartos e o conteúdo da página.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="rooms" className="space-y-4">
-                  <div className="overflow-x-auto pb-2">
-                    <TabsList>
-                      <TabsTrigger value="rooms">Quartos</TabsTrigger>
-                      <TabsTrigger value="hospedagem-content">Conteúdo da Página</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  
-                  <TabsContent value="rooms">
-                    <RoomsManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="hospedagem-content">
-                    <HospedagemManager />
-                  </TabsContent>
+                <Tabs defaultValue="rooms">
+                  <TabsList className="grid grid-cols-2">
+                    <TabsTrigger value="rooms">Quartos</TabsTrigger>
+                    <TabsTrigger value="hospedagem-content">Conteúdo Página</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="rooms" className="pt-4"><RoomsManager /></TabsContent>
+                  <TabsContent value="hospedagem-content" className="pt-4"><HospedagemManager /></TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="store" className="space-y-4">
+          <TabsContent value="store">
             <Card>
               <CardHeader>
-                <CardTitle>Loja Virtual</CardTitle>
-                <CardDescription>Gerencie categorias e produtos da loja</CardDescription>
+                <CardTitle>Gestão da Loja Virtual</CardTitle>
+                <CardDescription>Gerencie configurações, categorias e produtos.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="config" className="space-y-4">
-                  <div className="overflow-x-auto pb-2">
-                    <TabsList>
-                      <TabsTrigger value="config">Configurações</TabsTrigger>
-                      <TabsTrigger value="categories">Categorias</TabsTrigger>
-                      <TabsTrigger value="products">Produtos</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  
-                  <TabsContent value="config">
-                    <StoreConfigManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="categories">
-                    <CategoriesManager />
-                  </TabsContent>
-                  
-                  <TabsContent value="products">
-                    <ProductsManager />
-                  </TabsContent>
+                <Tabs defaultValue="config">
+                  <TabsList className="grid grid-cols-3">
+                    <TabsTrigger value="config">Configurações</TabsTrigger>
+                    <TabsTrigger value="categories">Categorias</TabsTrigger>
+                    <TabsTrigger value="products">Produtos</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="config" className="pt-4"><StoreConfigManager /></TabsContent>
+                  <TabsContent value="categories" className="pt-4"><CategoriesManager /></TabsContent>
+                  <TabsContent value="products" className="pt-4"><ProductsManager /></TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="settings" className="space-y-4">
+          <TabsContent value="settings">
             <Card>
               <CardHeader>
-                <CardTitle>Configurações</CardTitle>
-                <CardDescription>Configurações gerais e localização</CardDescription>
+                <CardTitle>Configurações Gerais</CardTitle>
+                <CardDescription>Ajustes de localização e outras configurações globais.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <LocationManager />
-              </CardContent>
+              <CardContent><LocationManager /></CardContent>
             </Card>
           </TabsContent>
         </Tabs>

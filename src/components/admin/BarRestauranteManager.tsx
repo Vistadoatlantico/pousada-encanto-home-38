@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,407 +7,210 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Trash2, Plus, Save, Loader2 } from "lucide-react";
+import MediaManager from "./MediaManager";
+
+interface Content {
+  title: string;
+  subtitle: string;
+  description: string;
+  background_image: string;
+  opening_hours: { restaurant: string; bar: string };
+  contact: { phone: string; whatsapp: string };
+  location: string;
+  menu_food: string[]; 
+  menu_drinks: string[];
+  gallery_items: string[];
+  specialties: string[];
+}
 
 const BarRestauranteManager = () => {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
-  const [content, setContent] = useState({
-    title: "Bar e Restaurante",
-    subtitle: "Sabores únicos com vista paradisíaca",
-    description: "Desfrute de uma experiência gastronômica inesquecível em nosso restaurante com vista para a natureza",
+  const [content, setContent] = useState<Content>({
+    title: "",
+    subtitle: "",
+    description: "",
     background_image: "",
-    opening_hours: {
-      restaurant: "Café da manhã: 6h às 10h | Almoço: 12h às 15h | Jantar: 18h às 22h",
-      bar: "Diariamente das 10h às 23h"
-    },
-    contact: {
-      phone: "(11) 99999-9999",
-      whatsapp: "(11) 99999-9999"
-    },
-    location: "Hotel Paradise - Vista para a natureza",
-    menu_categories: [],
-    gallery_items: [], // Changed from gallery_images to support both images and videos
+    opening_hours: { restaurant: "", bar: "" },
+    contact: { phone: "", whatsapp: "" },
+    location: "",
+    menu_food: [],
+    menu_drinks: [],
+    gallery_items: [],
     specialties: []
   });
 
-  useEffect(() => {
-    fetchContent();
-  }, []);
-
-  const fetchContent = async () => {
+  const fetchContent = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('site_content')
         .select('content')
         .eq('section_name', 'bar_restaurante')
-        .maybeSingle();
+        .single();
 
-      if (error) throw error;
+      if (error && error.code !== 'PGRST116') throw error;
       
       if (data?.content) {
-        const contentData = data.content as any;
+        const fetched = data.content as Partial<Content>;
+
+        const normalizeUrls = (field: any): string[] => {
+            if (Array.isArray(field)) {
+                return field.filter(u => typeof u === 'string' && u);
+            }
+            if (typeof field === 'string') {
+                if (field.startsWith('[') && field.endsWith(']')) {
+                    try {
+                        const parsed = JSON.parse(field);
+                        return Array.isArray(parsed) ? parsed.filter(u => typeof u === 'string' && u) : [];
+                    } catch (e) {
+                        return [];
+                    }
+                }
+                return field.trim() ? [field] : [];
+            }
+            return [];
+        };
+
         setContent(prev => ({
           ...prev,
-          ...contentData,
-          menu_categories: contentData.menu_categories || [],
-          gallery_items: contentData.gallery_items || [],
-          specialties: contentData.specialties || []
+          ...fetched,
+          opening_hours: { ...prev.opening_hours, ...fetched.opening_hours },
+          contact: { ...prev.contact, ...fetched.contact },
+          background_image: normalizeUrls(fetched.background_image)[0] || '',
+          menu_food: normalizeUrls(fetched.menu_food),
+          menu_drinks: normalizeUrls(fetched.menu_drinks),
+          gallery_items: normalizeUrls(fetched.gallery_items),
+          specialties: Array.isArray(fetched.specialties) ? fetched.specialties : [],
         }));
       }
-    } catch (error) {
-      console.error('Error fetching content:', error);
-      toast.error('Erro ao carregar conteúdo');
+    } catch (error: any) {
+      toast.error("Erro ao carregar conteúdo.", { description: error.message });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const uploadFile = async (file: File, type: 'background' | 'gallery'): Promise<string> => {
-    const fileExt = file.name.split('.').pop();
-    const isVideo = file.type.startsWith('video/');
-    const fileName = `bar-restaurante-${type}-${Date.now()}.${fileExt}`;
-    const bucket = isVideo ? 'spa-videos' : 'images'; // Use existing buckets
-    const filePath = `pages/${fileName}`;
-
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(filePath, file);
-
-    if (error) throw error;
-
-    const { data } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
-
-    return data.publicUrl;
-  };
-
-  const handleBackgroundUpload = async () => {
-    if (!selectedFiles || selectedFiles.length === 0) return;
-
-    try {
-      const file = selectedFiles[0]; // Only first file for background
-      const imageUrl = await uploadFile(file, 'background');
-      setContent(prev => ({ ...prev, background_image: imageUrl }));
-      setSelectedFiles(null);
-      toast.success('Imagem de fundo enviada com sucesso!');
-    } catch (error) {
-      console.error('Error uploading background:', error);
-      toast.error('Erro ao enviar imagem de fundo');
-    }
-  };
-
-  const handleGalleryUpload = async () => {
-    if (!selectedFiles || selectedFiles.length === 0) return;
-
-    try {
-      const uploadPromises = Array.from(selectedFiles).map(file => uploadFile(file, 'gallery'));
-      const uploadedUrls = await Promise.all(uploadPromises);
-      
-      const newGalleryItems = uploadedUrls.map(url => ({
-        url,
-        type: url.includes('spa-videos') ? 'video' : 'image'
-      }));
-
-      setContent(prev => ({ 
-        ...prev, 
-        gallery_items: [...prev.gallery_items, ...newGalleryItems] 
-      }));
-      setSelectedFiles(null);
-      toast.success(`${uploadedUrls.length} arquivo(s) enviado(s) com sucesso!`);
-    } catch (error) {
-      console.error('Error uploading gallery files:', error);
-      toast.error('Erro ao enviar arquivos');
-    }
-  };
+  useEffect(() => {
+    fetchContent();
+  }, [fetchContent]);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const { data: existing } = await supabase
+       const { error } = await supabase
         .from('site_content')
-        .select('id')
-        .eq('section_name', 'bar_restaurante')
-        .maybeSingle();
+        .upsert({ section_name: 'bar_restaurante', content: content as any }, { onConflict: 'section_name' });
 
-      if (existing) {
-        const { error } = await supabase
-          .from('site_content')
-          .update({ content, updated_at: new Date().toISOString() })
-          .eq('section_name', 'bar_restaurante');
-
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('site_content')
-          .insert([{ section_name: 'bar_restaurante', content }]);
-
-        if (error) throw error;
-      }
-
-      toast.success('Conteúdo salvo com sucesso!');
-    } catch (error) {
-      console.error('Error saving content:', error);
-      toast.error('Erro ao salvar conteúdo');
+      if (error) throw error;
+      toast.success("Conteúdo da página salvo com sucesso!");
+      fetchContent(); // Re-fetch to ensure sync
+    } catch (error: any) {
+      toast.error("Erro ao salvar.", { description: error.message });
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
-  }
+  const handleFieldChange = (field: keyof Content, value: any) => {
+    setContent(prev => ({ ...prev, [field]: value }));
+  };
+  
+  const handleNestedFieldChange = (section: 'opening_hours' | 'contact', field: string, value: string) => {
+     setContent(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
+  };
+
+  const addSpecialty = () => setContent(prev => ({ ...prev, specialties: [...prev.specialties, ''] }));
+  const removeSpecialty = (index: number) => setContent(prev => ({ ...prev, specialties: prev.specialties.filter((_, i) => i !== index) }));
+  const updateSpecialty = (index: number, value: string) => {
+      const newSpecialties = [...content.specialties];
+      newSpecialties[index] = value;
+      setContent(prev => ({ ...prev, specialties: newSpecialties }));
+  };
+
+  if (isLoading) return <div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-paradise-blue" /></div>;
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Informações Principais</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="title">Título</Label>
-            <Input
-              id="title"
-              value={content.title}
-              onChange={(e) => setContent(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="Título da página"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="subtitle">Subtítulo</Label>
-            <Input
-              id="subtitle"
-              value={content.subtitle}
-              onChange={(e) => setContent(prev => ({ ...prev, subtitle: e.target.value }))}
-              placeholder="Subtítulo"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="description">Descrição</Label>
-            <Textarea
-              id="description"
-              value={content.description}
-              onChange={(e) => setContent(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Descrição do restaurante"
-              rows={4}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="restaurant-hours">Horário do Restaurante</Label>
-            <Input
-              id="restaurant-hours"
-              value={content.opening_hours.restaurant}
-              onChange={(e) => setContent(prev => ({ 
-                ...prev, 
-                opening_hours: { ...prev.opening_hours, restaurant: e.target.value }
-              }))}
-              placeholder="Ex: Café da manhã: 6h às 10h | Almoço: 12h às 15h"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="bar-hours">Horário do Bar</Label>
-            <Input
-              id="bar-hours"
-              value={content.opening_hours.bar}
-              onChange={(e) => setContent(prev => ({ 
-                ...prev, 
-                opening_hours: { ...prev.opening_hours, bar: e.target.value }
-              }))}
-              placeholder="Ex: Diariamente das 10h às 23h"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="location">Localização</Label>
-            <Input
-              id="location"
-              value={content.location}
-              onChange={(e) => setContent(prev => ({ ...prev, location: e.target.value }))}
-              placeholder="Ex: Hotel Paradise - Vista para a natureza"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="phone">Telefone</Label>
-            <Input
-              id="phone"
-              value={content.contact.phone}
-              onChange={(e) => setContent(prev => ({ 
-                ...prev, 
-                contact: { ...prev.contact, phone: e.target.value }
-              }))}
-              placeholder="Ex: (11) 99999-9999"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="whatsapp">WhatsApp</Label>
-            <Input
-              id="whatsapp"
-              value={content.contact.whatsapp}
-              onChange={(e) => setContent(prev => ({ 
-                ...prev, 
-                contact: { ...prev.contact, whatsapp: e.target.value }
-              }))}
-              placeholder="Ex: (11) 99999-9999"
-            />
-          </div>
-        </CardContent>
-      </Card>
+        <Card>
+            <CardHeader className="flex-row justify-between items-center">
+                <div className="space-y-1">
+                    <CardTitle>Gerenciar Bar e Restaurante</CardTitle>
+                    <p className="text-sm text-muted-foreground">Edite as informações da página, cardápios e galeria.</p>
+                </div>
+                <Button onClick={handleSave} disabled={isSaving} variant="paradise">
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2"/>}
+                    {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+                </Button>
+            </CardHeader>
+        </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Imagem de Fundo</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Informações Principais</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label>Imagem de Fundo da Página</Label>
-            <div className="flex gap-2">
-              <Input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setSelectedFiles(e.target.files)}
-              />
-              <Button
-                onClick={handleBackgroundUpload}
-                disabled={!selectedFiles || selectedFiles.length === 0}
-                variant="outline"
-              >
-                Enviar
-              </Button>
+             <div className="grid md:grid-cols-2 gap-4">
+              <div><Label>Título da Página</Label><Input value={content.title} onChange={(e) => handleFieldChange('title', e.target.value)} /></div>
+              <div><Label>Subtítulo</Label><Input value={content.subtitle} onChange={(e) => handleFieldChange('subtitle', e.target.value)} /></div>
             </div>
-            {content.background_image && (
-              <img
-                src={content.background_image}
-                alt="Fundo"
-                className="mt-2 w-32 h-32 object-cover rounded"
-              />
-            )}
+            <div><Label>Texto de Descrição</Label><Textarea value={content.description} onChange={(e) => handleFieldChange('description', e.target.value)} rows={4} /></div>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader><CardTitle>Informações de Contato e Horários</CardTitle></CardHeader>
+        <CardContent className="grid md:grid-cols-2 gap-4">
+            <div><Label>Horário do Restaurante</Label><Input value={content.opening_hours.restaurant} onChange={(e) => handleNestedFieldChange('opening_hours', 'restaurant', e.target.value)} /></div>
+            <div><Label>Horário do Bar</Label><Input value={content.opening_hours.bar} onChange={(e) => handleNestedFieldChange('opening_hours', 'bar', e.target.value)} /></div>
+            <div><Label>Telefone de Contato</Label><Input value={content.contact.phone} onChange={(e) => handleNestedFieldChange('contact', 'phone', e.target.value)} /></div>
+            <div><Label>Link do WhatsApp</Label><Input value={content.contact.whatsapp} onChange={(e) => handleNestedFieldChange('contact', 'whatsapp', e.target.value)} placeholder="https://wa.me/55..." /></div>
+             <div><Label>Localização (texto)</Label><Input value={content.location} onChange={(e) => handleFieldChange('location', e.target.value)} /></div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Mídias</CardTitle></CardHeader>
+        <CardContent className="space-y-6">
+            <div>
+                <Label className="text-base font-medium">Imagem de Fundo Principal</Label>
+                 <p className="text-sm text-muted-foreground mb-2">Esta imagem aparecerá no topo da página.</p>
+                <MediaManager mediaUrls={content.background_image ? [content.background_image] : []} onMediaUpdate={(urls) => handleFieldChange('background_image', urls[0] || '')} folder="bar-restaurante/background" isSingle/>
+            </div>
+            <div className="border-t pt-6">
+                <Label className="text-base font-medium">Galeria de Fotos</Label>
+                <p className="text-sm text-muted-foreground mb-2">Imagens que aparecerão na galeria da página.</p>
+                <MediaManager mediaUrls={content.gallery_items} onMediaUpdate={(urls) => handleFieldChange('gallery_items', urls)} folder="bar-restaurante/gallery" />
+            </div>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader><CardTitle>Cardápios</CardTitle></CardHeader>
+        <CardContent className="grid md:grid-cols-2 gap-6">
+          <div>
+            <Label className="text-base font-medium">Cardápio de Comidas</Label>
+            <p className="text-sm text-muted-foreground mb-2">Envie o arquivo do cardápio (PDF ou imagem).</p>
+             <MediaManager mediaUrls={content.menu_food} onMediaUpdate={(urls) => handleFieldChange('menu_food', urls)} folder="bar-restaurante/menus" />
+          </div>
+          <div>
+            <Label className="text-base font-medium">Cardápio de Bebidas</Label>
+             <p className="text-sm text-muted-foreground mb-2">Envie o arquivo do cardápio (PDF ou imagem).</p>
+            <MediaManager mediaUrls={content.menu_drinks} onMediaUpdate={(urls) => handleFieldChange('menu_drinks', urls)} folder="bar-restaurante/menus" />
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Especialidades</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <CardHeader><CardTitle className="flex justify-between items-center">Especialidades da Casa<Button variant="outline" size="sm" onClick={addSpecialty}><Plus className="w-4 h-4 mr-2"/>Adicionar</Button></CardTitle></CardHeader>
+        <CardContent className="space-y-2">
           {content.specialties.map((specialty, index) => (
-            <div key={index} className="flex gap-2">
-              <Input
-                value={specialty}
-                onChange={(e) => {
-                  const newSpecialties = [...content.specialties];
-                  newSpecialties[index] = e.target.value;
-                  setContent(prev => ({ ...prev, specialties: newSpecialties }));
-                }}
-                placeholder={`Especialidade ${index + 1}`}
-              />
-              <Button
-                onClick={() => {
-                  const newSpecialties = content.specialties.filter((_, i) => i !== index);
-                  setContent(prev => ({ ...prev, specialties: newSpecialties }));
-                }}
-                variant="outline"
-                size="icon"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+            <div key={index} className="flex items-center gap-2">
+              <Input value={specialty} onChange={e => updateSpecialty(index, e.target.value)} placeholder="Ex: Moqueca de Frutos do Mar"/>
+              <Button variant="destructive-outline" size="icon" onClick={() => removeSpecialty(index)}><Trash2 className="w-4 h-4"/></Button>
             </div>
           ))}
-          <Button 
-            onClick={() => setContent(prev => ({ ...prev, specialties: [...prev.specialties, ''] }))} 
-            variant="outline" 
-            className="w-full"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Adicionar Especialidade
-          </Button>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Galeria de Imagens e Vídeos</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Adicionar Arquivos (Imagens e Vídeos)</Label>
-            <div className="flex gap-2">
-              <Input
-                type="file"
-                accept="image/*,video/*"
-                multiple
-                onChange={(e) => setSelectedFiles(e.target.files)}
-              />
-              <Button
-                onClick={handleGalleryUpload}
-                disabled={!selectedFiles || selectedFiles.length === 0}
-                variant="outline"
-              >
-                Enviar
-              </Button>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {content.gallery_items.map((item, index) => (
-              <div key={index} className="relative group">
-                {item.type === 'video' ? (
-                  <video
-                    src={item.url}
-                    className="w-full h-32 object-cover rounded"
-                    controls
-                    preload="metadata"
-                  />
-                ) : (
-                  <img
-                    src={item.url}
-                    alt={`Galeria ${index + 1}`}
-                    className="w-full h-32 object-cover rounded"
-                  />
-                )}
-                <Button
-                  onClick={() => {
-                    const newItems = content.gallery_items.filter((_, i) => i !== index);
-                    setContent(prev => ({ ...prev, gallery_items: newItems }));
-                  }}
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                  variant="destructive"
-                  size="sm"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Button onClick={handleSave} disabled={isSaving} className="w-full">
-        {isSaving ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Salvando...
-          </>
-        ) : (
-          <>
-            <Save className="w-4 h-4 mr-2" />
-            Salvar Alterações
-          </>
-        )}
-      </Button>
     </div>
   );
 };

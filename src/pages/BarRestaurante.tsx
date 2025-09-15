@@ -5,35 +5,17 @@ import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Clock, MapPin, Phone, X } from "lucide-react";
-
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string;
-  price: string;
-  category: string;
-  image?: string;
-}
+import { X } from "lucide-react";
 
 interface BarRestauranteContent {
   title: string;
   subtitle: string;
   description: string;
   background_image?: string;
-  opening_hours: {
-    restaurant: string;
-    bar: string;
-  };
-  contact: {
-    phone: string;
-    whatsapp: string;
-  };
+  opening_hours: { restaurant: string; bar: string; };
+  contact: { phone: string; whatsapp: string; };
   location: string;
-  menu_categories: {
-    name: string;
-    items: MenuItem[];
-  }[];
+  menu: { food_menu_url?: string; drink_menu_url?: string; }; // New menu structure
   gallery_items: { url: string; type: 'image' | 'video' }[];
   specialties: string[];
 }
@@ -43,17 +25,11 @@ const BarRestaurante = () => {
   const [content, setContent] = useState<BarRestauranteContent>({
     title: "Bar e Restaurante",
     subtitle: "Sabores únicos com vista paradisíaca",
-    description: "Desfrute de uma experiência gastronômica inesquecível em nosso restaurante com vista para a natureza",
-    opening_hours: {
-      restaurant: "Café da manhã: 6h às 10h | Almoço: 12h às 15h | Jantar: 18h às 22h",
-      bar: "Diariamente das 10h às 23h"
-    },
-    contact: {
-      phone: "(11) 99999-9999",
-      whatsapp: "(11) 99999-9999"
-    },
-    location: "Hotel Paradise - Vista para a natureza",
-    menu_categories: [],
+    description: "Desfrute de uma experiência gastronômica inesquecível em nosso restaurante.",
+    opening_hours: { restaurant: "", bar: "" },
+    contact: { phone: "", whatsapp: "" },
+    location: "",
+    menu: {}, // Initialize new menu structure
     gallery_items: [],
     specialties: []
   });
@@ -77,149 +53,100 @@ const BarRestaurante = () => {
         setContent(prev => ({
           ...prev,
           ...fetchedContent,
-          menu_categories: Array.isArray(fetchedContent.menu_categories) ? fetchedContent.menu_categories : prev.menu_categories,
-          gallery_items: Array.isArray(fetchedContent.gallery_items) ? fetchedContent.gallery_items : prev.gallery_items,
-          specialties: Array.isArray(fetchedContent.specialties) ? fetchedContent.specialties : prev.specialties
+          // Ensure nested objects are properly initialized
+          opening_hours: fetchedContent.opening_hours || prev.opening_hours,
+          contact: fetchedContent.contact || prev.contact,
+          menu: fetchedContent.menu || prev.menu,
+          gallery_items: Array.isArray(fetchedContent.gallery_items) ? fetchedContent.gallery_items : [],
+          specialties: Array.isArray(fetchedContent.specialties) ? fetchedContent.specialties : []
         }));
       }
     } catch (error) {
-      console.error('Error fetching bar restaurante content:', error);
+      console.error('Error fetching bar/restaurante content:', error);
     }
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       <Header />
       
-      {/* Hero Section with Overlay Card */}
-      <section className="relative pt-16 sm:pt-20 pb-12 sm:pb-16 md:pb-24 min-h-screen bg-gradient-to-r from-paradise-blue to-accent">
+      <section className="relative pt-20 pb-16 min-h-[60vh] flex items-center justify-center text-white">
         {content.background_image && (
-          <div 
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-            style={{ backgroundImage: `url(${content.background_image})` }}
-          >
-            <div className="absolute inset-0 bg-black/40"></div>
+          <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${content.background_image})` }}>
+            <div className="absolute inset-0 bg-black/50"></div>
           </div>
         )}
-        
-        {/* Main Content Card */}
-        <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-[calc(100vh-8rem)]">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl w-full">
-            
-            {/* Left Card - Content */}
-            <Card className="bg-white/95 backdrop-blur-sm shadow-2xl">
-              <CardContent className="p-6 sm:p-8">
-                <p className="text-muted-foreground mb-6 text-sm sm:text-base leading-relaxed">
-                  {content.description}
-                </p>
-                
-                {/* Diferenciais */}
-                {content.specialties.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-lg sm:text-xl font-bold text-paradise-blue mb-4">
-                      Nossos diferenciais:
-                    </h3>
-                    <ul className="space-y-2">
-                      {content.specialties.map((specialty, index) => (
-                        <li key={index} className="flex items-center gap-2 text-sm sm:text-base">
-                          <div className="w-2 h-2 bg-paradise-blue rounded-full flex-shrink-0"></div>
-                          <span>{specialty}</span>
+        <div className="relative z-10 text-center px-4">
+          <h1 className="text-4xl md:text-6xl font-bold tracking-tight">{content.title}</h1>
+          <p className="text-lg md:text-2xl mt-4 max-w-2xl mx-auto">{content.subtitle}</p>
+        </div>
+      </section>
+
+      <section className="py-16">
+        <div className="container mx-auto px-4">
+          <div className="grid lg:grid-cols-3 gap-12">
+            <div className="lg:col-span-2 space-y-8">
+               <Card>
+                 <CardContent className="p-8">
+                   <h2 className="text-2xl font-bold text-paradise-blue mb-4">Uma Experiência Gastronômica Inesquecível</h2>
+                   <p className="text-muted-foreground leading-relaxed">{content.description}</p>
+                 </CardContent>
+               </Card>
+
+              {content.specialties && content.specialties.length > 0 && (
+                <Card>
+                  <CardContent className="p-8">
+                    <h3 className="text-xl font-bold text-paradise-blue mb-4">Nossos Diferenciais</h3>
+                    <ul className="space-y-3">
+                      {content.specialties.map((item, index) => (
+                        <li key={index} className="flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 bg-paradise-blue rounded-full"/>
+                          <span>{item}</span>
                         </li>
                       ))}
                     </ul>
-                  </div>
-                )}
-                
-                {/* CTA Button */}
-                <Button 
-                  onClick={() => setIsMenuModalOpen(true)}
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 text-base"
-                >
-                  Ver Cardápio
-                </Button>
-                
-                {/* Contact Info */}
-                <div className="mt-6 pt-4 border-t border-gray-200">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm text-muted-foreground">
-                    <div>
-                      <p className="font-semibold text-paradise-blue">Horários:</p>
-                      <p>{content.opening_hours.restaurant}</p>
-                      <p>{content.opening_hours.bar}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-paradise-blue">Contato:</p>
-                      <p>Tel: {content.contact.phone}</p>
-                      <p>WhatsApp: {content.contact.whatsapp}</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            {/* Right Card - Gallery */}
-            {content.gallery_items.length > 0 && (
-              <div className="space-y-4">
-                {content.gallery_items.slice(0, 4).map((item, index) => (
-                  <Card key={index} className="bg-white/95 backdrop-blur-sm shadow-lg overflow-hidden">
-                    <CardContent className="p-0">
-                      {item.type === 'video' ? (
-                        <video
-                          src={item.url}
-                          className="w-full h-48 object-cover"
-                          controls
-                          preload="metadata"
-                        />
-                      ) : (
-                        <img
-                          src={item.url}
-                          alt={`Ambiente ${index + 1}`}
-                          className="w-full h-48 object-cover"
-                        />
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
 
-            {/* Fallback Image Card */}
-            {content.gallery_items.length === 0 && (
-              <Card className="bg-white/95 backdrop-blur-sm shadow-2xl overflow-hidden">
-                <CardContent className="p-0">
-                  <div className="w-full h-full bg-gray-200 flex items-center justify-center min-h-[400px]">
-                    <p className="text-gray-500">Adicione imagens ou vídeos no painel administrativo</p>
+            <div className="space-y-6">
+              <Card>
+                <CardContent className="p-6">
+                   <Button onClick={() => setIsMenuModalOpen(true)} className="w-full bg-orange-500 hover:bg-orange-600">Ver Cardápio</Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6 space-y-4 text-sm">
+                  <div>
+                    <h4 className="font-semibold text-paradise-blue mb-2">Horários</h4>
+                    <p><strong>Restaurante:</strong> {content.opening_hours.restaurant}</p>
+                    <p><strong>Bar:</strong> {content.opening_hours.bar}</p>
+                  </div>
+                   <hr/>
+                  <div>
+                    <h4 className="font-semibold text-paradise-blue mb-2">Contato</h4>
+                    <p><strong>Telefone:</strong> {content.contact.phone}</p>
+                    <p><strong>WhatsApp:</strong> {content.contact.whatsapp}</p>
                   </div>
                 </CardContent>
               </Card>
-            )}
-            
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Additional Gallery Section */}
-      {content.gallery_items.length > 4 && (
-        <section className="py-8 sm:py-12 md:py-16 bg-background">
+      {content.gallery_items && content.gallery_items.length > 0 && (
+        <section className="py-16 bg-muted/40">
           <div className="container mx-auto px-4">
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-center text-paradise-blue mb-6 sm:mb-8">
-              Mais do nosso ambiente
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {content.gallery_items.slice(4).map((item, index) => (
-                <div key={index + 4} className="aspect-square overflow-hidden rounded-lg shadow-card">
+            <h2 className="text-3xl font-bold text-center text-paradise-blue mb-8">Galeria de Fotos</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {content.gallery_items.map((item, index) => (
+                <div key={index} className="aspect-w-1 aspect-h-1 rounded-lg overflow-hidden shadow-lg">
                   {item.type === 'video' ? (
-                    <video
-                      src={item.url}
-                      className="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-                      controls
-                      preload="metadata"
-                    />
+                    <video src={item.url} className="w-full h-full object-cover" controls playsInline loop muted />
                   ) : (
-                    <img
-                      src={item.url}
-                      alt={`Ambiente ${index + 5}`}
-                      className="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-                    />
+                    <img src={item.url} alt={`Galeria ${index + 1}`} className="w-full h-full object-cover" />
                   )}
                 </div>
               ))}
@@ -228,43 +155,28 @@ const BarRestaurante = () => {
         </section>
       )}
 
-      {/* Menu Modal */}
       <Dialog open={isMenuModalOpen} onOpenChange={setIsMenuModalOpen}>
-        <DialogContent className="max-w-[95vw] w-full h-[95vh] p-0">
-          <DialogHeader className="p-4 border-b bg-white">
-            <div className="flex items-center justify-between">
-              <DialogTitle className="text-lg font-semibold">Cardápio</DialogTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsMenuModalOpen(false)}
-                className="h-6 w-6 p-0"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+        <DialogContent className="max-w-4xl w-[90vw] h-[90vh] p-0">
+          <DialogHeader className="p-4 border-b flex flex-row items-center justify-between">
+            <DialogTitle>Nosso Cardápio</DialogTitle>
+            <Button variant="ghost" size="icon" onClick={() => setIsMenuModalOpen(false)}><X className="h-4 w-4" /></Button>
           </DialogHeader>
-          <div className="flex-1 h-[calc(95vh-80px)] overflow-auto p-4">
-            <div className="space-y-6">
-              {/* Comidas Menu */}
+          <div className="h-[calc(90vh-65px)] overflow-y-auto p-4 space-y-8">
+            {content.menu.food_menu_url && (
               <div className="text-center">
-                <h3 className="text-xl font-bold text-paradise-blue mb-4">Pratos</h3>
-                <img
-                  src="/lovable-uploads/db629691-f1fe-4f95-afd2-d45926f40ff2.png"
-                  alt="Cardápio de Comidas"
-                  className="w-full max-w-4xl mx-auto rounded-lg shadow-lg"
-                />
+                <h3 className="text-2xl font-bold text-paradise-blue mb-4">Pratos</h3>
+                <img src={content.menu.food_menu_url} alt="Cardápio de Comidas" className="w-full rounded-lg shadow-md"/>
               </div>
-              {/* Bebidas Menu */}
+            )}
+            {content.menu.drink_menu_url && (
               <div className="text-center">
-                <h3 className="text-xl font-bold text-paradise-blue mb-4">Bebidas</h3>
-                <img
-                  src="/lovable-uploads/7c6430b5-d6b5-4682-b46c-0548f70f5518.png"
-                  alt="Cardápio de Bebidas"
-                  className="w-full max-w-4xl mx-auto rounded-lg shadow-lg"
-                />
+                <h3 className="text-2xl font-bold text-paradise-blue mb-4">Bebidas</h3>
+                <img src={content.menu.drink_menu_url} alt="Cardápio de Bebidas" className="w-full rounded-lg shadow-md"/>
               </div>
-            </div>
+            )}
+             {!content.menu.food_menu_url && !content.menu.drink_menu_url && (
+                <p className="text-center text-muted-foreground pt-10">O cardápio ainda não foi adicionado.</p>
+            )}
           </div>
         </DialogContent>
       </Dialog>

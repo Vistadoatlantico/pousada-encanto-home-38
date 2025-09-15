@@ -1,12 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, X } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+
+// A simple, auto-playing carousel component
+const ImageCarousel = ({ images, alt }: { images: string[], alt: string }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const nextSlide = useCallback(() => {
+    setCurrentIndex((prevIndex) => (prevIndex + 1) % images.length);
+  }, [images.length]);
+
+  useEffect(() => {
+    if (images.length > 1) {
+      const intervalId = setInterval(nextSlide, 3000); // Change slide every 3 seconds
+      return () => clearInterval(intervalId);
+    }
+  }, [images, nextSlide]);
+
+  if (!images || images.length === 0) {
+    return (
+      <div className="w-full h-full bg-muted flex items-center justify-center">
+        <span className="text-sm text-muted-foreground">Sem imagem</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full h-full overflow-hidden">
+      {images.map((image, index) => (
+        <img
+          key={index}
+          src={image}
+          alt={`${alt} - ${index + 1}`}
+          className={`w-full h-full object-cover absolute transition-opacity duration-1000 ${index === currentIndex ? 'opacity-100' : 'opacity-0'}`}
+        />
+      ))}
+    </div>
+  );
+};
 
 interface ServiceItem {
   id: string;
@@ -14,14 +51,14 @@ interface ServiceItem {
   description: string;
   price: string;
   duration?: string;
-  image?: string;
+  images?: string[];
 }
 
 interface ServiceCategory {
   id: string;
   name: string;
   description: string;
-  image: string;
+  images: string[];
   serviceCount: number;
   services: ServiceItem[];
 }
@@ -47,7 +84,17 @@ const Servicos = () => {
         
         if (data) {
           setPageContent({ title: data.title, description: data.description });
-          setCategories((data.categories as any) || []);
+          
+          // Backward compatibility for images
+          const parsedCategories = (data.categories as any[] || []).map(cat => ({
+            ...cat,
+            images: Array.isArray(cat.images) ? cat.images : (cat.image ? [cat.image] : []),
+            services: (cat.services as any[] || []).map(srv => ({
+              ...srv,
+              images: Array.isArray(srv.images) ? srv.images : (srv.image ? [srv.image] : []),
+            }))
+          }));
+          setCategories(parsedCategories);
         }
       } catch (error) {
         console.error('Error fetching services page content:', error);
@@ -89,30 +136,21 @@ const Servicos = () => {
     setSelectedService(null);
   };
 
-  // If a category is selected, show the category detail view
+  // Category Detail View
   if (categoryParam && selectedCategory) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-paradise-blue via-paradise-blue to-paradise-blue/80">
         <Header />
         
-        <section className="pt-16 sm:pt-20 pb-8 px-4">
+        <section className="pt-20 pb-8 px-4">
           <div className="container mx-auto max-w-4xl">
-            <div className="flex items-center mb-6">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={handleBack}
-                className="mr-4 text-white hover:bg-white/20"
-              >
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                Voltar
-              </Button>
-            </div>
+            <Button variant="ghost" size="sm" onClick={handleBack} className="mb-6 text-white hover:bg-white/20">
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Voltar
+            </Button>
             
             <div className="text-center text-white mb-8">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
-                Relaxamento total com nossos serviços exclusivos
-              </h1>
+              <h1 className="text-3xl md:text-4xl font-bold mb-4">{selectedCategory.name}</h1>
             </div>
 
             <Card className="bg-white/95 backdrop-blur-sm">
@@ -120,132 +158,49 @@ const Servicos = () => {
                 <p className="text-center text-muted-foreground mb-8 leading-relaxed">
                   {selectedCategory.description}
                 </p>
-
-                <div className="mb-6">
-                  <h2 className="text-xl font-bold text-foreground mb-4">Nossos serviços:</h2>
-                  
-                  {selectedCategory.services.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-1 sm:gap-4">
-                      {selectedCategory.services.map((service) => (
-                        <div 
-                          key={service.id} 
-                          className="bg-white border rounded-lg p-3 sm:p-4 hover:shadow-md transition-all cursor-pointer"
-                          onClick={() => handleServiceClick(service)}
-                        >
-                          {/* Layout para mobile (2x2) */}
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            {service.image ? (
-                              <div className="w-full h-24 sm:w-24 sm:h-20 rounded overflow-hidden flex-shrink-0">
-                                <img 
-                                  src={service.image} 
-                                  alt={service.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            ) : (
-                              <div className="w-full h-24 sm:w-24 sm:h-20 bg-paradise-blue rounded flex items-center justify-center">
-                                <span className="text-white text-lg">🔹</span>
-                              </div>
-                            )}
-                            
-                            <div className="flex-1">
-                              <div className="flex flex-col">
-                                <h3 className="font-bold text-sm sm:text-lg text-foreground mb-1 leading-tight">
-                                  {service.name}
-                                </h3>
-                                {service.duration && (
-                                  <p className="text-xs sm:text-sm text-paradise-blue font-medium mb-1 sm:mb-2">
-                                    {service.duration}
-                                  </p>
-                                )}
-                                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed line-clamp-2 sm:line-clamp-none mb-2">
-                                  {service.description}
-                                </p>
-                                <div className="mt-auto">
-                                  <span className="text-lg sm:text-2xl font-bold text-paradise-blue">
-                                    {service.price}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                <div className="grid grid-cols-1 gap-4">
+                  {selectedCategory.services.map((service) => (
+                    <div key={service.id} className="bg-white border rounded-lg p-3 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => handleServiceClick(service)}>
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="w-full sm:w-32 h-32 sm:h-auto flex-shrink-0 rounded-lg overflow-hidden">
+                           <ImageCarousel images={service.images || []} alt={service.name} />
                         </div>
-                      ))}
+                        <div className="flex-1 flex flex-col justify-center">
+                          <h3 className="font-bold text-lg text-foreground mb-1">{service.name}</h3>
+                          {service.duration && <p className="text-sm text-paradise-blue font-medium mb-2">{service.duration}</p>}
+                          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{service.description}</p>
+                          <span className="text-xl font-bold text-paradise-blue">{service.price}</span>
+                        </div>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <p className="text-muted-foreground">Nenhum serviço disponível nesta categoria no momento.</p>
-                    </div>
-                  )}
+                  ))}
                 </div>
-
-                {selectedCategory.services.length > 0 && (
-                  <div className="text-center">
-                    <Button 
-                      onClick={() => handleWhatsAppContact(selectedCategory.services[0].name, selectedCategory.services[0].price)}
-                      className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-lg font-semibold"
-                    >
-                      🟢 Agendar via WhatsApp
-                    </Button>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>
         </section>
 
-        {/* Service Detail Modal */}
         <Dialog open={isServiceModalOpen} onOpenChange={setIsServiceModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-2xl font-bold text-paradise-blue">
-                {selectedService?.name}
-              </DialogTitle>
+              <DialogTitle className="text-2xl font-bold text-paradise-blue">{selectedService?.name}</DialogTitle>
             </DialogHeader>
-            
             {selectedService && (
-              <div className="space-y-6">
-                {selectedService.image && (
-                  <div className="w-full h-64 rounded-lg overflow-hidden">
-                    <img 
-                      src={selectedService.image} 
-                      alt={selectedService.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-                
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-3xl font-bold text-paradise-blue">
-                      {selectedService.price}
-                    </span>
-                    {selectedService.duration && (
-                      <span className="text-muted-foreground">
-                        Duração: {selectedService.duration}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Descrição</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {selectedService.description}
-                    </p>
-                  </div>
-                  
-                  <div className="pt-4">
-                    <Button 
-                      onClick={() => {
-                        handleWhatsAppContact(selectedService.name, selectedService.price);
-                        closeServiceModal();
-                      }}
-                      className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold"
-                    >
-                      🟢 Agendar via WhatsApp
-                    </Button>
-                  </div>
+              <div className="space-y-4">
+                <div className="w-full h-48 rounded-lg overflow-hidden">
+                  <ImageCarousel images={selectedService.images || []} alt={selectedService.name} />
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-2xl font-bold text-paradise-blue">{selectedService.price}</span>
+                  {selectedService.duration && <span className="text-muted-foreground">Duração: {selectedService.duration}</span>}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">Descrição</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{selectedService.description}</p>
+                </div>
+                <Button onClick={() => handleWhatsAppContact(selectedService.name, selectedService.price)} className="w-full bg-green-500 hover:bg-green-600 text-white">
+                  Agendar via WhatsApp
+                </Button>
               </div>
             )}
           </DialogContent>
@@ -256,70 +211,37 @@ const Servicos = () => {
     );
   }
 
-  // Default view - show categories
+  // Categories Listing View
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-screen bg-background">
       <Header />
-      
-      <section className="pt-16 sm:pt-20 pb-6 sm:pb-8 px-4">
+      <section className="pt-20 pb-8 px-4">
         <div className="container mx-auto">
-          <div className="flex items-center mb-4 sm:mb-6">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handleBack}
-              className="mr-2 sm:mr-4"
-            >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Voltar
-            </Button>
-          </div>
-          
-          <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-3 sm:mb-4">
-              {pageContent.title}
-            </h1>
-            <p className="text-sm sm:text-base md:text-lg text-muted-foreground">
-              {pageContent.description}
-            </p>
+          <Button variant="ghost" size="sm" onClick={handleBack} className="mb-6"><ChevronLeft className="w-4 h-4 mr-1" />Voltar</Button>
+          <div className="text-center max-w-3xl mx-auto mb-12">
+            <h1 className="text-4xl lg:text-5xl font-bold text-foreground mb-4">{pageContent.title}</h1>
+            <p className="text-lg text-muted-foreground">{pageContent.description}</p>
           </div>
         </div>
       </section>
 
-      <section className="pb-8 sm:pb-12 md:pb-16 px-4">
+      <section className="pb-16 px-4">
         <div className="container mx-auto">
           {loading ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Carregando serviços...</p>
-            </div>
+            <p className="text-center text-muted-foreground">Carregando...</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
               {categories.map((category) => (
-              <Card key={category.id} className="group hover:shadow-xl transition-all duration-300 overflow-hidden bg-white/95 backdrop-blur-sm">
-                <div className="aspect-[4/3] overflow-hidden">
-                  <img
-                    src={category.image}
-                    alt={category.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                </div>
-                <CardContent className="p-6 text-center">
-                  <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
-                    {category.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {category.serviceCount} serviços disponíveis
-                  </p>
-                  
-                  <Button 
-                    onClick={() => handleViewServices(category.id)}
-                    variant="paradise" 
-                    className="w-full"
-                  >
-                    Ver Serviços
-                  </Button>
-                </CardContent>
-              </Card>
+                <Card key={category.id} className="group overflow-hidden rounded-lg shadow-md hover:shadow-xl transition-shadow">
+                   <div className="aspect-[4/3] overflow-hidden">
+                      <ImageCarousel images={category.images} alt={category.name} />
+                   </div>
+                  <CardContent className="p-6 text-center">
+                    <h3 className="text-xl font-bold text-foreground mb-2">{category.name}</h3>
+                    <p className="text-sm text-muted-foreground mb-4">{category.serviceCount} serviços disponíveis</p>
+                    <Button onClick={() => handleViewServices(category.id)} variant="paradise" className="w-full">Ver Serviços</Button>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}

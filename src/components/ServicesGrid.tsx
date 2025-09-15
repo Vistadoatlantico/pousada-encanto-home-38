@@ -1,13 +1,49 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useEffect, useCallback } from "react";
+import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+
+const ImageCarousel = ({ images, alt }: { images: string[], alt: string }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const nextSlide = useCallback(() => {
+    setCurrentIndex((prevIndex) => (prevIndex + 1) % (images.length || 1));
+  }, [images.length]);
+
+  useEffect(() => {
+    if (images.length > 1) {
+      const intervalId = setInterval(nextSlide, 3000);
+      return () => clearInterval(intervalId);
+    }
+  }, [images.length, nextSlide]);
+
+  if (!images || images.length === 0) {
+    return (
+      <div className="w-full h-full bg-muted flex items-center justify-center">
+        <span className="text-sm text-muted-foreground">Sem imagem</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full h-full overflow-hidden">
+      {images.map((image, index) => (
+        <img
+          key={index}
+          src={image}
+          alt={`${alt} - slide ${index + 1}`}
+          className={`w-full h-full object-cover absolute transition-opacity duration-1000 ${index === currentIndex ? 'opacity-100' : 'opacity-0'}`}
+        />
+      ))}
+    </div>
+  );
+};
 
 interface Service {
   id: string;
   title: string;
   description: string;
-  image_url: string | null;
+  image_urls: string[] | string | null;
   sort_order: number;
 }
 
@@ -20,7 +56,7 @@ const ServicesGrid = () => {
       try {
         const { data } = await supabase
           .from('services')
-          .select('*')
+          .select('id, title, description, image_urls, sort_order')
           .eq('active', true)
           .order('sort_order');
         
@@ -51,36 +87,52 @@ const ServicesGrid = () => {
     const route = getServiceRoute(service.title);
     navigate(route);
   };
+  
+  const normalizeUrls = (field: any): string[] => {
+    if (Array.isArray(field)) {
+        return field.filter(u => typeof u === 'string' && u);
+    }
+    if (typeof field === 'string') {
+        if (field.startsWith('[') && field.endsWith(']')) {
+            try {
+                const parsed = JSON.parse(field);
+                return Array.isArray(parsed) ? parsed.filter(u => typeof u === 'string' && u) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+        return field.trim() ? [field] : [];
+    }
+    return [];
+  };
 
   return (
     <section className="py-20 bg-white">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8 max-w-7xl mx-auto">
-          {services.map((service) => (
-            <Card 
-              key={service.id} 
-              className="overflow-hidden hover:shadow-lg transition-all duration-300 group cursor-pointer animate-fade-in hover-scale"
-              onClick={() => handleServiceClick(service)}
-            >
-              {service.image_url && (
+          {services.map((service) => {
+            const images = normalizeUrls(service.image_urls);
+
+            return (
+              <Card 
+                key={service.id} 
+                className="overflow-hidden hover:shadow-lg transition-all duration-300 group cursor-pointer animate-fade-in hover-scale"
+                onClick={() => handleServiceClick(service)}
+              >
                 <div className="relative h-48 overflow-hidden">
-                  <img 
-                    src={service.image_url} 
-                    alt={service.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
+                  <ImageCarousel images={images} alt={service.title} />
                 </div>
-              )}
-              <CardContent className="p-6">
-                <h3 className="text-xl font-bold text-paradise-blue mb-3 text-center">
-                  {service.title}
-                </h3>
-                <p className="text-muted-foreground text-sm leading-relaxed text-center">
-                  {service.description}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+                <div className="p-6">
+                  <h3 className="text-xl font-bold text-paradise-blue mb-3 text-center">
+                    {service.title}
+                  </h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed text-center">
+                    {service.description}
+                  </p>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </section>

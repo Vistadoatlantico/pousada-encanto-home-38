@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import ImageManager from "./ImageManager";
+import MediaManager from "./MediaManager";
+import { Plus, Minus, Loader2, Save } from 'lucide-react';
 
 interface AreaVipPackage {
   name: string;
@@ -22,410 +23,223 @@ interface AreaVipContent {
   description: string;
   features: string[];
   packages: AreaVipPackage[];
-  heroImage?: string;
+  heroImages?: string[];
   galleryImages?: string[];
 }
 
 const AreaVipManager = () => {
   const [content, setContent] = useState<AreaVipContent>({
-    title: "Área VIP",
-    subtitle: "Exclusividade e conforto para momentos especiais",
-    description: "Desfrute de um espaço reservado com serviços premium e atendimento personalizado.",
-    features: ["Área privativa", "Serviço de garçom", "Som ambiente", "Decoração especial"],
-    packages: [
-      {
-        name: "VIP Família",
-        description: "Perfeito para celebrações familiares",
-        price: "R$ 300,00",
-        capacity: "Até 8 pessoas",
-        includes: ["Área reservada", "Bebidas inclusas", "Petiscos", "4 horas"]
-      },
-      {
-        name: "VIP Premium",
-        description: "Para ocasiões ainda mais especiais",
-        price: "R$ 500,00", 
-        capacity: "Até 12 pessoas",
-        includes: ["Área exclusiva", "Open bar", "Buffet completo", "6 horas", "Decoração"]
-      }
-    ],
-    heroImage: "",
+    title: "",
+    subtitle: "",
+    description: "",
+    features: [],
+    packages: [],
+    heroImages: [],
     galleryImages: []
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    fetchContent();
-  }, []);
-
-  const fetchContent = async () => {
+  const fetchContent = useCallback(async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
       const { data, error } = await supabase
         .from('site_content')
         .select('content')
         .eq('section_name', 'area_vip')
         .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching area VIP content:', error);
-        return;
-      }
+      if (error && error.code !== 'PGRST116') throw error;
       
       if (data?.content && typeof data.content === 'object') {
-        const fetchedContent = data.content as unknown as Partial<AreaVipContent>;
+        const fetched = data.content as Partial<AreaVipContent>;
+
+        const normalizeUrls = (field: any): string[] => {
+            if (Array.isArray(field)) {
+                return field.filter(u => typeof u === 'string' && u);
+            }
+            if (typeof field === 'string') {
+                if (field.startsWith('[') && field.endsWith(']')) {
+                    try {
+                        const parsed = JSON.parse(field);
+                        return Array.isArray(parsed) ? parsed.filter(u => typeof u === 'string' && u) : [];
+                    } catch (e) {
+                        return [];
+                    }
+                }
+                return field.trim() ? [field] : [];
+            }
+            return [];
+        };
+
+        const hero = normalizeUrls(fetched.heroImages);
+        const gallery = normalizeUrls(fetched.galleryImages);
+
         setContent(prev => ({
           ...prev,
-          ...fetchedContent,
-          features: Array.isArray(fetchedContent.features) ? fetchedContent.features : prev.features,
-          packages: Array.isArray(fetchedContent.packages) ? fetchedContent.packages : prev.packages,
-          galleryImages: Array.isArray(fetchedContent.galleryImages) ? fetchedContent.galleryImages : prev.galleryImages
+          ...fetched,
+          features: Array.isArray(fetched.features) ? fetched.features : [],
+          packages: (Array.isArray(fetched.packages) ? fetched.packages : []).map(p => ({ ...p, includes: Array.isArray(p.includes) ? p.includes : [] })),
+          heroImages: hero,
+          galleryImages: gallery
         }));
       }
-    } catch (error) {
-      console.error('Error in fetchContent:', error);
+    } catch (error: any) {
+      toast.error("Falha ao carregar conteúdo da Área VIP.", { description: error.message });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchContent();
+  }, [fetchContent]);
 
   const handleSave = async () => {
+    setIsSaving(true);
     try {
-      setIsSaving(true);
-      
-      // Filter out empty features and package includes
-      const cleanedContent = {
-        ...content,
-        features: content.features.filter(feature => feature.trim() !== ''),
-        packages: content.packages.map(pkg => ({
-          ...pkg,
-          includes: pkg.includes.filter(include => include.trim() !== '')
-        }))
-      };
-      
-      // Check if record exists
-      const { data: existingRecord } = await supabase
+      const { error } = await supabase
         .from('site_content')
-        .select('id')
-        .eq('section_name', 'area_vip')
-        .maybeSingle();
+        .upsert({ section_name: 'area_vip', content: content as any }, { onConflict: 'section_name' });
 
-      let result;
-      if (existingRecord) {
-        // Update existing record
-        result = await supabase
-          .from('site_content')
-          .update({ content: cleanedContent })
-          .eq('section_name', 'area_vip');
-      } else {
-        // Insert new record
-        result = await supabase
-          .from('site_content')
-          .insert({
-            section_name: 'area_vip',
-            content: cleanedContent
-          });
-      }
-
-      if (result.error) throw result.error;
-      
-      toast.success("Conteúdo da Área VIP salvo com sucesso!");
-    } catch (error) {
-      console.error('Error saving area VIP content:', error);
-      toast.error("Erro ao salvar conteúdo da Área VIP");
+      if (error) throw error;
+      toast.success("Conteúdo da Área VIP atualizado com sucesso!");
+    } catch (error: any) {
+      toast.error("Erro ao salvar conteúdo.", { description: error.message });
     } finally {
       setIsSaving(false);
     }
   };
 
-  const updatePackage = (index: number, field: keyof AreaVipPackage, value: string | string[]) => {
-    setContent(prev => ({
-      ...prev,
-      packages: prev.packages.map((pkg, i) => 
-        i === index ? { ...pkg, [field]: value } : pkg
-      )
-    }));
+  const updateField = useCallback((field: keyof AreaVipContent, value: any) => {
+    setContent(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const updatePackage = (index: number, field: keyof AreaVipPackage, value: any) => {
+      const newPackages = [...content.packages];
+      newPackages[index] = {...newPackages[index], [field]: value};
+      updateField('packages', newPackages);
   };
 
-  const addPackage = () => {
-    setContent(prev => ({
-      ...prev,
-      packages: [...prev.packages, {
-        name: "",
-        description: "",
-        price: "",
-        capacity: "",
-        includes: []
-      }]
-    }));
-  };
+  const addFeature = () => updateField('features', [...content.features, ""]);
+  const removeFeature = (index: number) => updateField('features', content.features.filter((_, i) => i !== index));
+  const updateFeature = (index: number, value: string) => updateField('features', content.features.map((f, i) => i === index ? value : f));
 
-  const removePackage = (index: number) => {
-    setContent(prev => ({
-      ...prev,
-      packages: prev.packages.filter((_, i) => i !== index)
-    }));
-  };
+  const addPackage = () => updateField('packages', [...content.packages, { name: "", description: "", price: "", capacity: "", includes: [] }]);
+  const removePackage = (index: number) => updateField('packages', content.packages.filter((_, i) => i !== index));
 
-  const updateFeature = (index: number, value: string) => {
-    setContent(prev => ({
-      ...prev,
-      features: prev.features.map((feature, i) => 
-        i === index ? value : feature
-      )
-    }));
+  const addPackageInclude = (pkgIndex: number) => {
+      const newPackages = [...content.packages];
+      newPackages[pkgIndex].includes.push("");
+      updateField('packages', newPackages);
   };
-
-  const addFeature = () => {
-    setContent(prev => ({
-      ...prev,
-      features: [...prev.features, ""]
-    }));
+  const removePackageInclude = (pkgIndex: number, incIndex: number) => {
+      const newPackages = [...content.packages];
+      newPackages[pkgIndex].includes = newPackages[pkgIndex].includes.filter((_, i) => i !== incIndex);
+      updateField('packages', newPackages);
   };
-
-  const removeFeature = (index: number) => {
-    setContent(prev => ({
-      ...prev,
-      features: prev.features.filter((_, i) => i !== index)
-    }));
-  };
-
-  const updatePackageInclude = (packageIndex: number, includeIndex: number, value: string) => {
-    setContent(prev => ({
-      ...prev,
-      packages: prev.packages.map((pkg, i) => 
-        i === packageIndex 
-          ? { ...pkg, includes: pkg.includes.map((inc, j) => j === includeIndex ? value : inc) }
-          : pkg
-      )
-    }));
-  };
-
-  const addPackageInclude = (packageIndex: number) => {
-    setContent(prev => ({
-      ...prev,
-      packages: prev.packages.map((pkg, i) => 
-        i === packageIndex 
-          ? { ...pkg, includes: [...pkg.includes, ""] }
-          : pkg
-      )
-    }));
-  };
-
-  const removePackageInclude = (packageIndex: number, includeIndex: number) => {
-    setContent(prev => ({
-      ...prev,
-      packages: prev.packages.map((pkg, i) => 
-        i === packageIndex 
-          ? { ...pkg, includes: pkg.includes.filter((_, j) => j !== includeIndex) }
-          : pkg
-      )
-    }));
+  const updatePackageInclude = (pkgIndex: number, incIndex: number, value: string) => {
+      const newPackages = [...content.packages];
+      newPackages[pkgIndex].includes[incIndex] = value;
+      updateField('packages', newPackages);
   };
 
   if (isLoading) {
-    return <div className="p-6">Carregando...</div>;
+    return <div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-paradise-blue" /></div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Gerenciar Área VIP</h2>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? "Salvando..." : "Salvar Alterações"}
-        </Button>
-      </div>
-
-      {/* Basic Info */}
       <Card>
-        <CardHeader>
-          <CardTitle>Informações Básicas</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="title">Título</Label>
-            <Input
-              id="title"
-              value={content.title}
-              onChange={(e) => setContent(prev => ({ ...prev, title: e.target.value }))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="subtitle">Subtítulo</Label>
-            <Input
-              id="subtitle"
-              value={content.subtitle}
-              onChange={(e) => setContent(prev => ({ ...prev, subtitle: e.target.value }))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="description">Descrição</Label>
-            <Textarea
-              id="description"
-              value={content.description}
-              onChange={(e) => setContent(prev => ({ ...prev, description: e.target.value }))}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Hero Image */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Imagem Principal</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ImageManager
-            pageKey="area-vip-hero"
-            currentImageUrl={content.heroImage}
-            onImageUpdate={(url) => setContent(prev => ({ ...prev, heroImage: url }))}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Features */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex justify-between items-center">
-            Características da Experiência VIP
-            <Button onClick={addFeature} variant="outline" size="sm">
-              Adicionar Característica
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {content.features.map((feature, index) => (
-            <div key={index} className="flex gap-2 items-center">
-              <Input
-                value={feature}
-                onChange={(e) => updateFeature(index, e.target.value)}
-                placeholder="Digite a característica"
-              />
-              <Button 
-                onClick={() => removeFeature(index)} 
-                variant="destructive" 
-                size="sm"
-              >
-                Remover
-              </Button>
+        <CardHeader className="flex-row justify-between items-center">
+            <div className="space-y-1">
+              <CardTitle>Gerenciar Área VIP</CardTitle>
+              <p className="text-sm text-muted-foreground">Edite todos os detalhes da página da Área VIP.</p>
             </div>
-          ))}
+            <Button onClick={handleSave} disabled={isSaving} variant="paradise">
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
+              {isSaving ? "Salvando..." : "Salvar Alterações"}
+            </Button>
+        </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Conteúdo Principal</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><Label>Título</Label><Input value={content.title} onChange={(e) => updateField('title', e.target.value)} /></div>
+            <div><Label>Subtítulo</Label><Input value={content.subtitle} onChange={(e) => updateField('subtitle', e.target.value)} /></div>
+          </div>
+          <div><Label>Descrição Principal</Label><Textarea value={content.description} onChange={(e) => updateField('description', e.target.value)} /></div>
         </CardContent>
       </Card>
 
-      {/* Packages */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex justify-between items-center">
-            Pacotes VIP
-            <Button onClick={addPackage} variant="outline" size="sm">
-              Adicionar Pacote
-            </Button>
-          </CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Mídias da Página</CardTitle></CardHeader>
         <CardContent className="space-y-6">
-          {content.packages.map((pkg, index) => (
-            <div key={index} className="border p-4 rounded-lg space-y-4">
-              <div className="flex justify-between items-center">
-                <h4 className="font-semibold">Pacote {index + 1}</h4>
-                <Button 
-                  onClick={() => removePackage(index)} 
-                  variant="destructive" 
-                  size="sm"
-                >
-                  Remover
-                </Button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor={`package-name-${index}`}>Nome do Pacote</Label>
-                  <Input
-                    id={`package-name-${index}`}
-                    value={pkg.name}
-                    onChange={(e) => updatePackage(index, 'name', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor={`package-price-${index}`}>Preço</Label>
-                  <Input
-                    id={`package-price-${index}`}
-                    value={pkg.price}
-                    onChange={(e) => updatePackage(index, 'price', e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <Label htmlFor={`package-description-${index}`}>Descrição</Label>
-                <Textarea
-                  id={`package-description-${index}`}
-                  value={pkg.description}
-                  onChange={(e) => updatePackage(index, 'description', e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor={`package-capacity-${index}`}>Capacidade</Label>
-                <Input
-                  id={`package-capacity-${index}`}
-                  value={pkg.capacity}
-                  onChange={(e) => updatePackage(index, 'capacity', e.target.value)}
-                />
-              </div>
+          <div>
+            <Label className="text-base font-medium">Imagens do Topo (Carrossel)</Label>
+            <p className="text-sm text-muted-foreground mb-2">Essas imagens aparecerão no topo da página.</p>
+            <MediaManager
+              mediaUrls={content.heroImages || []}
+              onMediaUpdate={(urls) => updateField('heroImages', urls)}
+              folder="area-vip/hero"
+            />
+          </div>
+          <div className="border-t pt-6">
+            <Label className="text-base font-medium">Galeria de Fotos</Label>
+             <p className="text-sm text-muted-foreground mb-2">Galeria de imagens complementares da área VIP.</p>
+            <MediaManager
+              mediaUrls={content.galleryImages || []}
+              onMediaUpdate={(urls) => updateField('galleryImages', urls)}
+              folder="area-vip/gallery"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-              {/* Package Includes */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <Label>Itens Inclusos</Label>
-                  <Button 
-                    onClick={() => addPackageInclude(index)} 
-                    variant="outline" 
-                    size="sm"
-                  >
-                    Adicionar Item
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {pkg.includes.map((include, includeIndex) => (
-                    <div key={includeIndex} className="flex gap-2 items-center">
-                      <Input
-                        value={include}
-                        onChange={(e) => updatePackageInclude(index, includeIndex, e.target.value)}
-                        placeholder="Digite o item incluso"
-                      />
-                      <Button 
-                        onClick={() => removePackageInclude(index, includeIndex)} 
-                        variant="destructive" 
-                        size="sm"
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+      <Card>
+        <CardHeader><CardTitle className="flex justify-between items-center">Características e Benefícios<Button onClick={addFeature} variant="outline" size="sm"><Plus className="mr-2 h-4 w-4"/>Adicionar</Button></CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {content.features.map((feature, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <Input value={feature} onChange={(e) => updateFeature(index, e.target.value)} placeholder="Ex: Wi-Fi de alta velocidade"/>
+              <Button onClick={() => removeFeature(index)} variant="destructive" size="icon"><Minus className="h-4 w-4"/></Button>
             </div>
           ))}
         </CardContent>
       </Card>
 
-      {/* Gallery Images */}
       <Card>
-        <CardHeader>
-          <CardTitle>Galeria de Imagens</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ImageManager
-            pageKey="area-vip-gallery"
-            currentImageUrl={content.galleryImages?.[0]}
-            onImageUpdate={(url) => {
-              setContent(prev => ({
-                ...prev,
-                galleryImages: url ? [url, ...(prev.galleryImages?.slice(1) || [])] : prev.galleryImages?.slice(1) || []
-              }));
-            }}
-          />
+        <CardHeader><CardTitle className="flex justify-between items-center">Pacotes Disponíveis<Button onClick={addPackage} variant="outline" size="sm"><Plus className="mr-2 h-4 w-4"/>Adicionar</Button></CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {content.packages.length === 0 && <p className="text-muted-foreground text-center py-4">Nenhum pacote adicionado.</p>}
+          {content.packages.map((pkg, index) => (
+            <div key={index} className="border rounded-lg p-4 bg-muted/50 space-y-4">
+              <div className="flex justify-between items-center">
+                <h4 className="font-semibold text-lg">{pkg.name || `Pacote ${index + 1}`}</h4>
+                <Button onClick={() => removePackage(index)} variant="destructive-outline" size="sm">Remover Pacote</Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><Label>Nome do Pacote</Label><Input value={pkg.name} onChange={(e) => updatePackage(index, 'name', e.target.value)} /></div>
+                <div><Label>Preço</Label><Input value={pkg.price} onChange={(e) => updatePackage(index, 'price', e.target.value)} /></div>
+                <div><Label>Capacidade de Pessoas</Label><Input value={pkg.capacity} onChange={(e) => updatePackage(index, 'capacity', e.target.value)} /></div>
+              </div>
+              <div><Label>Descrição do Pacote</Label><Textarea value={pkg.description} onChange={(e) => updatePackage(index, 'description', e.target.value)} /></div>
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex justify-between items-center">
+                  <Label>Itens Inclusos no Pacote</Label>
+                  <Button onClick={() => addPackageInclude(index)} variant="outline" size="sm"><Plus className="mr-2 h-4 w-4"/>Add Item</Button>
+                </div>
+                {pkg.includes.map((include, incIndex) => (
+                  <div key={incIndex} className="flex items-center gap-2">
+                    <Input value={include} onChange={(e) => updatePackageInclude(index, incIndex, e.target.value)} placeholder="Ex: 1 Garrafa de Espumante"/>
+                    <Button onClick={() => removePackageInclude(index, incIndex)} variant="ghost" size="icon" className="text-destructive"><Minus className="h-4 w-4"/></Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>

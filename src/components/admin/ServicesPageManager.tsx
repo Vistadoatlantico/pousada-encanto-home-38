@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useCallback } from 'react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, Edit } from 'lucide-react';
-import ImageManager from './ImageManager';
+import { Plus, Trash2, Loader2, Save } from 'lucide-react';
+import MediaManager from './MediaManager';
+import { set } from 'lodash';
+import { Label } from '@/components/ui/label'; // Correctly import Label
 
 interface ServiceItem {
   id: string;
@@ -16,15 +17,14 @@ interface ServiceItem {
   description: string;
   price: string;
   duration?: string;
-  image?: string;
+  images?: string[];
 }
 
 interface ServiceCategory {
   id: string;
   name: string;
   description: string;
-  image: string;
-  serviceCount: number;
+  images: string[];
   services: ServiceItem[];
 }
 
@@ -37,400 +37,202 @@ interface ServicesPageContent {
 
 const ServicesPageManager = () => {
   const [content, setContent] = useState<ServicesPageContent | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const normalizeUrls = (field: any): string[] => {
+    let urls: any[] = [];
+    if (Array.isArray(field)) {
+      urls = field;
+    } else if (typeof field === 'string' && field.trim()) {
+      const trimmedField = field.trim();
+      if (trimmedField.startsWith('[') && trimmedField.endsWith(']')) {
+        try {
+          urls = JSON.parse(trimmedField);
+          if (!Array.isArray(urls)) urls = [urls];
+        } catch { urls = [field]; }
+      } else {
+        urls = [field];
+      }
+    }
+    return urls.filter(u => typeof u === 'string' && u.trim() !== '').map(u => u.trim());
+  };
+
+  const fetchContent = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.from('services_page_content').select('*').single();
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (data) {
+        const categories = (data.categories as any[] || [])
+          .filter(cat => cat) // Robustness: filter out null/undefined categories
+          .map((cat, index) => ({
+            ...cat,
+            id: cat.id || `cat_${index}_${Date.now()}`,
+            images: normalizeUrls(cat.images),
+            services: (cat.services as any[] || [])
+              .filter(srv => srv) // Robustness: filter out null/undefined services
+              .map((srv, srvIndex) => ({
+                ...srv,
+                id: srv.id || `srv_${srvIndex}_${Date.now()}`,
+                images: normalizeUrls(srv.images),
+              }))
+        }));
+        setContent({ ...data, categories });
+      } else {
+        const { data: newData } = await supabase.from('services_page_content').insert({ title: 'Nossos Serviços', description: 'Descubra os serviços que oferecemos.', categories: [] }).select().single();
+        if (newData) setContent(newData as ServicesPageContent);
+      }
+    } catch (error: any) {
+      toast.error('Erro ao carregar conteúdo', { description: error.message });
+      setContent(null); // Ensure content is null on error to show error message
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchContent();
-  }, []);
-
-  const fetchContent = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('services_page_content')
-        .select('*')
-        .single();
-
-      if (error) throw error;
-
-      setContent({
-        id: data.id,
-        title: data.title,
-        description: data.description,
-        categories: (data.categories as any) || []
-      });
-    } catch (error) {
-      toast({
-        title: 'Erro ao carregar conteúdo',
-        description: 'Não foi possível carregar o conteúdo da página.',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [fetchContent]);
 
   const handleSave = async () => {
     if (!content) return;
-    
-    setSaving(true);
+    setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('services_page_content')
-        .update({
-          title: content.title,
-          description: content.description,
-          categories: content.categories as any,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', content.id);
+      const contentToSave = {
+        title: content.title,
+        description: content.description,
+        categories: content.categories.map(category => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { id, ...restOfCategory } = category;
+          return {
+            ...restOfCategory,
+            services: category.services.map(service => {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { id, ...restOfService } = service;
+              return restOfService;
+            }),
+          };
+        }),
+      };
 
+      const { error } = await supabase.from('services_page_content').update(contentToSave).eq('id', content.id);
       if (error) throw error;
-
-      toast({
-        title: 'Sucesso!',
-        description: 'Conteúdo da página atualizado.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Erro ao salvar',
-        description: 'Não foi possível salvar as alterações.',
-        variant: 'destructive',
-      });
+      toast.success('Página de Serviços atualizada com sucesso!');
+      fetchContent();
+    } catch (error: any) {
+      toast.error('Erro ao salvar as alterações.', { description: error.message });
     } finally {
-      setSaving(false);
+      setIsSaving(false);
     }
   };
-
-  const updateBasicInfo = (field: 'title' | 'description', value: string) => {
-    if (!content) return;
-    setContent({ ...content, [field]: value });
+  
+  const updateField = (path: string, value: any) => {
+    setContent(prev => {
+      if (!prev) return null;
+      const newContent = JSON.parse(JSON.stringify(prev));
+      set(newContent, path, value);
+      return newContent;
+    });
   };
 
   const addCategory = () => {
     if (!content) return;
-    const newCategory: ServiceCategory = {
-      id: `category_${Date.now()}`,
-      name: 'Nova Categoria',
-      description: 'Descrição da categoria',
-      image: '',
-      serviceCount: 0,
-      services: []
-    };
-    setContent({
-      ...content,
-      categories: [...content.categories, newCategory]
-    });
+    const newCategory: ServiceCategory = { id: `new_cat_${Date.now()}`, name: 'Nova Categoria', description: '', images: [], services: [] };
+    updateField('categories', [...content.categories, newCategory]);
   };
 
-  const updateCategory = (categoryId: string, field: keyof ServiceCategory, value: any) => {
+  const removeCategory = (index: number) => {
     if (!content) return;
-    setContent({
-      ...content,
-      categories: content.categories.map(cat =>
-        cat.id === categoryId 
-          ? { ...cat, [field]: value, serviceCount: field === 'services' ? value.length : cat.serviceCount }
-          : cat
-      )
-    });
+    updateField('categories', content.categories.filter((_, i) => i !== index));
   };
 
-  const removeCategory = (categoryId: string) => {
+  const addService = (catIndex: number) => {
     if (!content) return;
-    setContent({
-      ...content,
-      categories: content.categories.filter(cat => cat.id !== categoryId)
-    });
+    const newService: ServiceItem = { id: `new_srv_${Date.now()}`, name: 'Novo Serviço', description: '', price: 'R$ 0,00', images: [] };
+    updateField(`categories[${catIndex}].services`, [...content.categories[catIndex].services, newService]);
   };
 
-  const addService = (categoryId: string, template?: Partial<ServiceItem>) => {
+  const removeService = (catIndex: number, serviceIndex: number) => {
     if (!content) return;
-    const newService: ServiceItem = {
-      id: `service_${Date.now()}`,
-      name: template?.name || '',
-      description: template?.description || '',
-      price: template?.price || 'R$ 0,00',
-      duration: template?.duration || '01:00:00',
-      image: template?.image || ''
-    };
-    
-    updateCategory(categoryId, 'services', [
-      ...content.categories.find(cat => cat.id === categoryId)?.services || [],
-      newService
-    ]);
+    updateField(`categories[${catIndex}].services`, content.categories[catIndex].services.filter((_, i) => i !== serviceIndex));
   };
 
-  const serviceTemplates = [
-    { name: 'Massagem Relaxante', description: 'Massagem completa para relaxamento', price: 'R$ 80,00', duration: '01:00:00' },
-    { name: 'Massagem Terapêutica', description: 'Massagem focada em alívio de tensões', price: 'R$ 100,00', duration: '01:30:00' },
-    { name: 'Decoração Básica', description: 'Decoração simples para eventos', price: 'R$ 150,00', duration: '02:00:00' },
-    { name: 'Decoração Premium', description: 'Decoração completa personalizada', price: 'R$ 300,00', duration: '04:00:00' },
-  ];
-
-  const updateService = (categoryId: string, serviceId: string, field: keyof ServiceItem, value: string) => {
-    if (!content) return;
-    const category = content.categories.find(cat => cat.id === categoryId);
-    if (!category) return;
-    
-    const updatedServices = category.services.map(service =>
-      service.id === serviceId ? { ...service, [field]: value } : service
-    );
-    
-    updateCategory(categoryId, 'services', updatedServices);
-  };
-
-  const updateServiceImage = (categoryId: string, serviceId: string, imageUrl: string) => {
-    updateService(categoryId, serviceId, 'image', imageUrl);
-  };
-
-  const removeService = (categoryId: string, serviceId: string) => {
-    if (!content) return;
-    const category = content.categories.find(cat => cat.id === categoryId);
-    if (!category) return;
-    
-    const updatedServices = category.services.filter(service => service.id !== serviceId);
-    updateCategory(categoryId, 'services', updatedServices);
-  };
-
-  if (loading) {
-    return <div className="text-center py-8">Carregando conteúdo da página...</div>;
-  }
-
-  if (!content) {
-    return <div className="text-center py-8">Erro ao carregar conteúdo.</div>;
-  }
+  if (isLoading) return <div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-paradise-blue"/></div>;
+  if (!content) return <div className="text-center py-8 text-destructive">Erro crítico: Não foi possível carregar o conteúdo. Por favor, atualize a página. Se o erro persistir, pode haver dados corrompidos no banco.</div>;
 
   return (
     <div className="space-y-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-paradise-blue mb-2">Gerenciar Página de Serviços</h2>
-        <p className="text-muted-foreground">
-          Edite o conteúdo da página de serviços, categorias e itens
-        </p>
-      </div>
+        <Card>
+             <CardHeader className="flex-row justify-between items-center">
+                <div className="space-y-1">
+                    <CardTitle>Gerenciar Página de Serviços</CardTitle>
+                    <p className="text-sm text-muted-foreground">Edite o título, categorias e todos os serviços oferecidos.</p>
+                </div>
+                <Button onClick={handleSave} disabled={isSaving} variant="paradise">
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                    {isSaving ? 'Salvando...' : 'Salvar Página'}
+                </Button>
+            </CardHeader>
+        </Card>
 
-      <Tabs defaultValue="general" className="space-y-4">
+      <Tabs defaultValue="general">
         <TabsList>
           <TabsTrigger value="general">Informações Gerais</TabsTrigger>
-          <TabsTrigger value="categories">Categorias</TabsTrigger>
+          <TabsTrigger value="categories">Categorias e Serviços</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="general" className="space-y-4">
+        <TabsContent value="general" className="pt-6">
           <Card>
-            <CardHeader>
-              <CardTitle>Informações da Página</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Conteúdo Principal da Página</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Título da Página</Label>
-                <Input
-                  value={content.title}
-                  onChange={(e) => updateBasicInfo('title', e.target.value)}
-                  placeholder="Título da página"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-                <Textarea
-                  value={content.description}
-                  onChange={(e) => updateBasicInfo('description', e.target.value)}
-                  placeholder="Descrição da página"
-                  rows={3}
-                />
-              </div>
+              <div><Label>Título Principal</Label><Input value={content.title} onChange={(e) => updateField('title', e.target.value)} /></div>
+              <div><Label>Descrição da Página</Label><Textarea value={content.description} onChange={(e) => updateField('description', e.target.value)} rows={4} /></div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="categories" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Categorias de Serviços</h3>
-            <Button onClick={addCategory} size="sm">
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Categoria
-            </Button>
-          </div>
-
-          {content.categories.map((category) => (
-            <Card key={category.id}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                <CardTitle className="text-lg">{category.name}</CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => removeCategory(category.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Nome da Categoria</Label>
-                    <Input
-                      value={category.name}
-                      onChange={(e) => updateCategory(category.id, 'name', e.target.value)}
-                      placeholder="Nome da categoria"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Descrição</Label>
-                  <Textarea
-                    value={category.description}
-                    onChange={(e) => updateCategory(category.id, 'description', e.target.value)}
-                    placeholder="Descrição da categoria"
-                    rows={3}
-                  />
-                </div>
-
-                <ImageManager
-                  pageKey={`category-${category.id}`}
-                  currentImageUrl={category.image}
-                  onImageUpdate={(imageUrl) => updateCategory(category.id, 'image', imageUrl)}
-                />
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <Label>Serviços ({category.services.length})</Label>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => addService(category.id)}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Serviço Personalizado
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Templates de Serviços */}
-                  <div className="bg-muted/30 p-3 rounded-lg">
-                    <Label className="text-xs font-medium text-muted-foreground mb-2 block">Templates Rápidos:</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {serviceTemplates.map((template, index) => (
-                        <Button
-                          key={index}
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => addService(category.id, template)}
-                          className="h-7 text-xs"
-                        >
-                          + {template.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {category.services.length === 0 ? (
-                    <div className="text-center py-6 border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
-                      <p className="text-muted-foreground mb-4">Nenhum serviço adicionado ainda</p>
-                      <div className="space-y-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => addService(category.id)}
-                          className="mx-2"
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Criar Serviço Personalizado
-                        </Button>
-                        <p className="text-xs text-muted-foreground">Ou use um dos templates acima</p>
-                      </div>
-                    </div>
-                  ) : (
-                    category.services.map((service) => (
-                      <Card key={service.id} className="bg-muted/50 border-l-4 border-l-paradise-blue">
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 bg-paradise-blue rounded-full"></div>
-                              <h4 className="font-medium text-paradise-blue">{service.name || 'Novo Serviço'}</h4>
+        <TabsContent value="categories" className="pt-6">
+          <div className="text-right mb-4"><Button onClick={addCategory}><Plus className="w-4 h-4 mr-2" /> Nova Categoria</Button></div>
+          <div className="space-y-6">
+            {content.categories.map((category, catIndex) => (
+                <Card key={category.id} className="border-l-4 border-paradise-blue/80">
+                    <CardHeader className="flex flex-row items-center justify-between bg-muted/30">
+                        <Input value={category.name} onChange={(e) => updateField(`categories[${catIndex}].name`, e.target.value)} className="text-lg font-bold border-none bg-transparent focus-visible:ring-1 h-auto"/>
+                        <Button variant="ghost" onClick={() => removeCategory(catIndex)} className={buttonVariants({variant: "destructive"})}>Remover Categoria</Button>
+                    </CardHeader>
+                    <CardContent className="p-4 md:p-6 space-y-6">
+                        <div><Label>Descrição da Categoria</Label><Textarea value={category.description} onChange={(e) => updateField(`categories[${catIndex}].description`, e.target.value)} rows={3} /></div>
+                        <div><Label className="font-medium">Imagens da Categoria</Label><MediaManager folder={`services_page/categories/${category.id}`} mediaUrls={category.images} onMediaUpdate={(urls) => updateField(`categories[${catIndex}].images`, urls)} /></div>
+                        <div className="space-y-4 pt-6 border-t">
+                            <div className="flex justify-between items-center">
+                                <h4 className="font-semibold">Serviços em "{category.name}"</h4>
+                                <Button variant="outline" size="sm" onClick={() => addService(catIndex)}><Plus className="w-4 h-4 mr-2" /> Adicionar Serviço</Button>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeService(category.id, service.id)}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            <div className="space-y-2">
-                              <Label className="text-xs font-medium text-muted-foreground">Nome do Serviço</Label>
-                              <Input
-                                value={service.name}
-                                onChange={(e) => updateService(category.id, service.id, 'name', e.target.value)}
-                                placeholder="Ex: Massagem Relaxante"
-                                className="h-8"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-xs font-medium text-muted-foreground">Preço</Label>
-                              <Input
-                                value={service.price}
-                                onChange={(e) => updateService(category.id, service.id, 'price', e.target.value)}
-                                placeholder="Ex: R$ 80,00"
-                                className="h-8"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-xs font-medium text-muted-foreground">Duração (opcional)</Label>
-                              <Input
-                                value={service.duration || ''}
-                                onChange={(e) => updateService(category.id, service.id, 'duration', e.target.value)}
-                                placeholder="Ex: 01:00:00"
-                                className="h-8"
-                              />
-                            </div>
-                          </div>
-                          
-                          <div className="mt-3 space-y-3">
-                            <div className="space-y-2">
-                              <Label className="text-xs font-medium text-muted-foreground">Descrição</Label>
-                              <Textarea
-                                value={service.description}
-                                onChange={(e) => updateService(category.id, service.id, 'description', e.target.value)}
-                                placeholder="Descreva os benefícios e detalhes do serviço..."
-                                rows={2}
-                                className="resize-none"
-                              />
-                            </div>
-                            
-                            <div className="space-y-2">
-                              <Label className="text-xs font-medium text-muted-foreground">Imagem do Serviço</Label>
-                              <ImageManager
-                                pageKey={`service-${service.id}`}
-                                currentImageUrl={service.image || ''}
-                                onImageUpdate={(imageUrl) => updateServiceImage(category.id, service.id, imageUrl)}
-                              />
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                            {category.services.map((service, srvIndex) => (
+                                <div key={service.id} className="p-4 border rounded-lg bg-white">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <Input value={service.name} onChange={(e) => updateField(`categories[${catIndex}].services[${srvIndex}].name`, e.target.value)} className="font-semibold border-none focus-visible:ring-1 h-auto"/>
+                                        <Button variant="ghost" size="icon" onClick={() => removeService(catIndex, srvIndex)} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                                    </div>
+                                    <div className="space-y-4">
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                          <div><Label>Preço</Label><Input value={service.price} onChange={(e) => updateField(`categories[${catIndex}].services[${srvIndex}].price`, e.target.value)} /></div>
+                                          <div><Label>Duração/Detalhe</Label><Input value={service.duration || ''} onChange={(e) => updateField(`categories[${catIndex}].services[${srvIndex}].duration`, e.target.value)} /></div>
+                                      </div>
+                                      <div><Label>Descrição do Serviço</Label><Textarea value={service.description} onChange={(e) => updateField(`categories[${catIndex}].services[${srvIndex}].description`, e.target.value)} rows={2} /></div>
+                                      <div><Label className="text-sm">Imagens do Serviço</Label><MediaManager folder={`services_page/services/${service.id}`} mediaUrls={service.images || []} onMediaUpdate={(urls) => updateField(`categories[${catIndex}].services[${srvIndex}].images`, urls)} /></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            ))}
+            </div>
         </TabsContent>
       </Tabs>
-
-      <Button 
-        onClick={handleSave}
-        disabled={saving}
-        variant="paradise"
-        className="w-full"
-        size="lg"
-      >
-        {saving ? 'Salvando...' : 'Salvar Todas as Alterações'}
-      </Button>
     </div>
   );
 };

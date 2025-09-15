@@ -8,38 +8,37 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trash2, Edit, Plus, Eye, Video, Image as ImageIcon } from "lucide-react";
+import { Trash2, Edit, Plus, Eye, Video, Image as ImageIcon, Loader2 } from "lucide-react";
+import MediaManager from "./MediaManager";
 
 interface GalleryItem {
   id: string;
   title: string;
   description: string | null;
-  media_url: string;
-  media_type: 'photo' | 'video';
+  media_urls: string[]; // Corrected type
+  media_type: 'photo' | 'video' | 'mixed';
   category: string;
   display_order: number;
   is_active: boolean;
   created_at: string;
-  updated_at: string;
 }
 
 const MainGalleryManager = () => {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<GalleryItem | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [mediaUrl, setMediaUrl] = useState('');
-  const [uploadType, setUploadType] = useState<'file' | 'url'>('file');
-  const [categories, setCategories] = useState<string[]>(['Geral', 'Piscina', 'Quartos', 'Restaurante', 'SPA', 'Área VIP']);
+  const [categories] = useState<string[]>(['Geral', 'Piscina', 'Quartos', 'Restaurante', 'SPA', 'Área VIP']);
 
-  const [formData, setFormData] = useState({
+  // Separate state for the form data
+  const [formData, setFormData] = useState<Omit<GalleryItem, 'id' | 'created_at' | 'media_type'> & { media_urls: string[] }>({
     title: '',
     description: '',
-    media_type: 'photo' as 'photo' | 'video',
+    media_urls: [],
     category: 'Geral',
     display_order: 0,
-    is_active: true
+    is_active: true,
   });
 
   useEffect(() => {
@@ -47,6 +46,7 @@ const MainGalleryManager = () => {
   }, []);
 
   const fetchItems = async () => {
+    setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('gallery_items')
@@ -54,393 +54,210 @@ const MainGalleryManager = () => {
         .order('display_order', { ascending: true });
 
       if (error) throw error;
-      setItems((data || []) as GalleryItem[]);
-    } catch (error) {
-      console.error('Error fetching gallery items:', error);
-      toast.error('Erro ao carregar itens da galeria');
+      setItems(data?.map(item => ({...item, media_urls: Array.isArray(item.media_urls) ? item.media_urls : [item.media_urls].filter(Boolean)})) || []);
+    } catch (error: any) {
+      toast.error('Erro ao carregar itens da galeria', { description: error.message });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const uploadFile = async (file: File): Promise<string> => {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `gallery-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `gallery/${fileName}`;
-
-    const { error } = await supabase.storage
-      .from('images')
-      .upload(filePath, file);
-
-    if (error) throw error;
-
-    const { data } = supabase.storage
-      .from('images')
-      .getPublicUrl(filePath);
-
-    return data.publicUrl;
+  const resetForm = () => {
+    setEditingItem(null);
+    setFormData({
+      title: '',
+      description: '',
+      media_urls: [],
+      category: 'Geral',
+      display_order: 0,
+      is_active: true,
+    });
+    setIsModalOpen(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    if (formData.media_urls.length === 0) {
+      toast.error("Por favor, adicione pelo menos uma mídia.");
+      return;
+    }
+    setIsSaving(true);
 
     try {
-      let finalMediaUrl = '';
+      const hasImages = formData.media_urls.some(url => url.toLowerCase().match(/\.(jpeg|jpg|gif|png|webp)$/));
+      const hasVideos = formData.media_urls.some(url => url.toLowerCase().match(/\.(mp4|webm|ogv)$/));
+      let media_type: 'photo' | 'video' | 'mixed' = hasImages ? 'photo' : 'video';
+      if (hasImages && hasVideos) media_type = 'mixed';
 
-      if (uploadType === 'file') {
-        if (selectedFile) {
-          finalMediaUrl = await uploadFile(selectedFile);
-        } else if (editingItem) {
-          finalMediaUrl = editingItem.media_url;
-        } else {
-          throw new Error('Arquivo é obrigatório');
-        }
-      } else {
-        if (mediaUrl.trim()) {
-          finalMediaUrl = mediaUrl.trim();
-        } else if (editingItem) {
-          finalMediaUrl = editingItem.media_url;
-        } else {
-          throw new Error('URL é obrigatória');
-        }
-      }
+      const dataToSave = { ...formData, media_type };
 
-      const itemData = {
-        ...formData,
-        media_url: finalMediaUrl
-      };
+      const { error } = await supabase
+        .from('gallery_items')
+        .upsert({ ...dataToSave, id: editingItem?.id }, { onConflict: 'id' });
 
-      if (editingItem) {
-        const { error } = await supabase
-          .from('gallery_items')
-          .update(itemData)
-          .eq('id', editingItem.id);
+      if (error) throw error;
 
-        if (error) throw error;
-        toast.success('Item atualizado com sucesso!');
-      } else {
-        const { error } = await supabase
-          .from('gallery_items')
-          .insert([itemData]);
-
-        if (error) throw error;
-        toast.success('Item adicionado com sucesso!');
-      }
-
+      toast.success(editingItem ? 'Item atualizado com sucesso!' : 'Item adicionado com sucesso!');
       resetForm();
       fetchItems();
-    } catch (error) {
-      console.error('Error saving gallery item:', error);
-      toast.error('Erro ao salvar item da galeria');
+    } catch (error: any) {
+      toast.error('Erro ao salvar item.', { description: error.message });
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
   const handleEdit = (item: GalleryItem) => {
     setEditingItem(item);
     setFormData({
-      title: item.title,
-      description: item.description || '',
-      media_type: item.media_type,
-      category: item.category,
-      display_order: item.display_order,
-      is_active: item.is_active
+        title: item.title,
+        description: item.description || '',
+        media_urls: Array.isArray(item.media_urls) ? item.media_urls : [item.media_urls].filter(Boolean),
+        category: item.category,
+        display_order: item.display_order,
+        is_active: item.is_active,
     });
-    setMediaUrl(item.media_url);
-    setUploadType('url'); // Default to URL when editing
     setIsModalOpen(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este item?')) return;
+    if (!window.confirm('Tem certeza que deseja excluir este item permanentemente?')) return;
 
     try {
-      const { error } = await supabase
-        .from('gallery_items')
-        .delete()
-        .eq('id', id);
-
+      // Note: This does not delete files from storage. That would require a more complex setup.
+      const { error } = await supabase.from('gallery_items').delete().eq('id', id);
       if (error) throw error;
       toast.success('Item excluído com sucesso!');
       fetchItems();
-    } catch (error) {
-      console.error('Error deleting gallery item:', error);
-      toast.error('Erro ao excluir item');
+    } catch (error: any) {
+      toast.error('Erro ao excluir item', { description: error.message });
     }
   };
 
-  const toggleActive = async (id: string, isActive: boolean) => {
+  const toggleActive = async (item: GalleryItem) => {
     try {
       const { error } = await supabase
         .from('gallery_items')
-        .update({ is_active: !isActive })
-        .eq('id', id);
+        .update({ is_active: !item.is_active })
+        .eq('id', item.id);
 
       if (error) throw error;
-      toast.success(`Item ${!isActive ? 'ativado' : 'desativado'} com sucesso!`);
-      fetchItems();
-    } catch (error) {
-      console.error('Error toggling item status:', error);
-      toast.error('Erro ao alterar status do item');
+      toast.success(`Status do item atualizado!`);
+      fetchItems(); // Refresh data
+    } catch (error: any) {
+      toast.error('Erro ao alterar status do item', { description: error.message });
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      title: '',
-      description: '',
-      media_type: 'photo',
-      category: 'Geral',
-      display_order: 0,
-      is_active: true
-    });
-    setEditingItem(null);
-    setSelectedFile(null);
-    setMediaUrl('');
-    setUploadType('file');
-    setIsModalOpen(false);
-  };
+  const getMediaTypeIcon = (type: string | undefined) => {
+    if (type === 'video') return <Video className="w-4 h-4 text-muted-foreground" />;
+    if (type === 'mixed') return <><ImageIcon className="w-4 h-4 text-muted-foreground" /><Video className="w-4 h-4 text-muted-foreground" /></>;
+    return <ImageIcon className="w-4 h-4 text-muted-foreground" />;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-paradise-blue">Gerenciar Galeria</h2>
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => resetForm()} className="bg-paradise-blue hover:bg-paradise-blue/90">
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Item
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {editingItem ? 'Editar Item' : 'Adicionar Item à Galeria'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Título *</label>
-                <Input
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Título do item"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Descrição</label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Descrição opcional"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Tipo de Mídia *</label>
-                <Select 
-                  value={formData.media_type} 
-                  onValueChange={(value: 'photo' | 'video') => setFormData({ ...formData, media_type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="photo">Foto</SelectItem>
-                    <SelectItem value="video">Vídeo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Categoria *</label>
-                <Select 
-                  value={formData.category} 
-                  onValueChange={(value) => setFormData({ ...formData, category: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Ordem de Exibição</label>
-                <Input
-                  type="number"
-                  value={formData.display_order}
-                  onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
-                  placeholder="0"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Método de Adição *</label>
-                <Select 
-                  value={uploadType} 
-                  onValueChange={(value: 'file' | 'url') => {
-                    setUploadType(value);
-                    setSelectedFile(null);
-                    setMediaUrl('');
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="file">Upload de Arquivo</SelectItem>
-                    <SelectItem value="url">Link/URL</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {uploadType === 'file' ? (
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {editingItem ? 'Alterar Arquivo (opcional)' : 'Arquivo *'}
-                  </label>
-                  <Input
-                    type="file"
-                    accept={formData.media_type === 'photo' ? 'image/*' : 'video/*'}
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                    required={!editingItem && uploadType === 'file'}
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {editingItem ? 'Alterar URL (opcional)' : 'URL da Imagem/Vídeo *'}
-                  </label>
-                  <Input
-                    type="url"
-                    value={mediaUrl}
-                    onChange={(e) => setMediaUrl(e.target.value)}
-                    placeholder="https://exemplo.com/imagem.jpg"
-                    required={!editingItem && uploadType === 'url'}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Cole o link direto da imagem ou vídeo
-                  </p>
-                </div>
-              )}
-
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                />
-                <label htmlFor="is_active" className="text-sm font-medium">Ativo</label>
-              </div>
-
-              <div className="flex gap-2">
-                <Button type="submit" disabled={isLoading} className="flex-1">
-                  {isLoading ? 'Salvando...' : editingItem ? 'Atualizar' : 'Adicionar'}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+                <CardTitle>Gerenciar Galeria Principal</CardTitle>
+                <p className="text-sm text-muted-foreground pt-1">Adicione, edite e remova os itens da galeria de fotos e vídeos.</p>
+            </div>
+            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <DialogTrigger asChild>
+                <Button onClick={() => resetForm()} variant="paradise">
+                <Plus className="w-4 h-4 mr-2" />
+                Adicionar Item
                 </Button>
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid gap-4">
-        {items.map((item) => (
-          <Card key={item.id} className={`${!item.is_active ? 'opacity-50' : ''}`}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    {item.media_type === 'photo' ? (
-                      <ImageIcon className="w-5 h-5" />
-                    ) : (
-                      <Video className="w-5 h-5" />
-                    )}
-                    {item.title}
-                  </CardTitle>
-                  <div className="flex gap-2 mt-2">
-                    <Badge variant="secondary">{item.category}</Badge>
-                    <Badge variant={item.is_active ? "default" : "destructive"}>
-                      {item.is_active ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </div>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl">
+                <DialogHeader><DialogTitle>{editingItem ? 'Editar Item' : 'Adicionar Novo Item'}</DialogTitle></DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-sm font-medium">Título *</label>
+                        <Input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium">Categoria *</label>
+                        <Select value={formData.category} onValueChange={value => setFormData({...formData, category: value})}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => toggleActive(item.id, item.is_active)}
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleEdit(item)}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDelete(item.id)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                <div>
+                    <label className="text-sm font-medium">Descrição</label>
+                    <Textarea value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} rows={3} />
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {item.description && (
-                <p className="text-muted-foreground mb-3">{item.description}</p>
-              )}
-              <div className="relative rounded-lg overflow-hidden">
-                {item.media_type === 'photo' ? (
-                  <img
-                    src={item.media_url}
-                    alt={item.title}
-                    className="w-full h-48 object-cover"
-                  />
-                ) : (
-                  <video
-                    src={item.media_url}
-                    controls
-                    className="w-full h-48 object-cover"
-                  />
-                )}
-              </div>
-              <div className="flex justify-between items-center mt-3 text-sm text-muted-foreground">
-                <span>Ordem: {item.display_order}</span>
-                <span>Criado: {new Date(item.created_at).toLocaleDateString('pt-BR')}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <div>
+                    <label className="text-sm font-medium">Mídias</label>
+                    <MediaManager
+                        folder={`gallery/${editingItem?.id || 'new'}`}
+                        mediaUrls={formData.media_urls}
+                        onMediaUpdate={urls => setFormData({...formData, media_urls: urls})}
+                    />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                    <div>
+                        <label className="text-sm font-medium">Ordem de Exibição</label>
+                        <Input type="number" value={formData.display_order} onChange={e => setFormData({...formData, display_order: parseInt(e.target.value) || 0})} />
+                    </div>
+                    <div className="flex items-center space-x-2 pb-1">
+                        <input type="checkbox" id="is_active_checkbox" checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} className="h-4 w-4"/>
+                        <label htmlFor="is_active_checkbox" className="text-sm font-medium">Item Ativo</label>
+                    </div>
+                </div>
+                <div className="flex gap-2 pt-4 justify-end">
+                    <Button type="button" variant="ghost" onClick={resetForm}>Cancelar</Button>
+                    <Button type="submit" disabled={isSaving} variant="paradise">
+                        {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin"/>}
+                        {editingItem ? 'Salvar Alterações' : 'Criar Item'}
+                    </Button>
+                </div>
+                </form>
+            </DialogContent>
+            </Dialog>
+        </CardHeader>
 
-        {items.length === 0 && (
-          <Card>
-            <CardContent className="text-center py-8">
-              <p className="text-muted-foreground">Nenhum item na galeria ainda.</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Clique em "Adicionar Item" para começar.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+        <CardContent className="pt-6">
+            {isLoading ? <div className="text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto"/></div> :
+            items.length === 0 ? (
+                <div className="text-center text-muted-foreground py-12">Nenhum item na galeria.</div>
+            ) : (
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {items.map((item) => (
+                <Card key={item.id} className={`${!item.is_active ? 'opacity-50 bg-muted/50' : ''}`}>
+                    <CardHeader className="p-0 relative">
+                        <div className="aspect-video w-full bg-muted overflow-hidden rounded-t-lg">
+                           {item.media_urls[0] ? <img src={item.media_urls[0]} alt={item.title} className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full text-muted-foreground"><ImageIcon/></div>}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                        <div className="flex justify-between items-start">
+                            <h3 className="font-semibold leading-snug flex-1 mr-2">{item.title}</h3>
+                            <div className="flex items-center gap-2">
+                                {getMediaTypeIcon(item.media_type)}
+                                <Badge variant="secondary">{item.category}</Badge>
+                            </div>
+                        </div>
+                        <div className="flex justify-between items-center gap-2">
+                            <div className="text-xs text-muted-foreground">Ordem: {item.display_order}</div>
+                            <div className="flex gap-1">
+                                <Button size="icon" variant={item.is_active ? 'outline' : 'secondary'} onClick={() => toggleActive(item)} className="h-8 w-8">
+                                    <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button size="icon" variant="outline" onClick={() => handleEdit(item)} className="h-8 w-8"><Edit className="w-4 h-4" /></Button>
+                                <Button size="icon" variant="destructive-outline" onClick={() => handleDelete(item.id)} className="h-8 w-8"><Trash2 className="w-4 h-4" /></Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+                ))}
+            </div>
+            )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
